@@ -103,9 +103,6 @@ PJLinkComponent->PowerOn();
 ## 연락처 및 지원
 
 - 이슈 트래커: [GitHub Issues](https://github.com/yourusername/pjlink-ue5/issues)
-- 이메일: support@yourdomain.com
-- 웹사이트: [www.yourdomain.com/pjlink](https://www.yourdomain.com/pjlink)
+- 이메일: motiondj@motiondj.com
+- 웹사이트: www.motiondj.com
 
-## 기여하기
-
-기여는 언제나 환영합니다. [CONTRIBUTING.md](CONTRIBUTING.md) 파일을 참조하여 기여 방법을 확인하세요.

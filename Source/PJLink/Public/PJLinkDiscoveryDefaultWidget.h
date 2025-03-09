@@ -108,6 +108,14 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|UI|Timer")
     float TimerCriticalThreshold = 60.0f; // 60초 이상이면 위험색
 
+    // ScannedAddressesText 변수 추가
+    UPROPERTY(BlueprintReadWrite, meta = (BindWidget), Category = "PJLink|UI")
+    class UTextBlock* ScannedAddressesText;
+
+    // 애니메이션 속도 제어 변수 추가
+    UPROPERTY(BlueprintReadWrite, Category = "PJLink|UI|Animation")
+    float AnimationSpeedMultiplier = 1.0f;
+
 protected:
     // 부모 클래스의 블루프린트 이벤트 구현
     virtual void UpdateProgressBar_Implementation(float ProgressPercentage, int32 DiscoveredDevices, int32 ScannedAddresses) override;

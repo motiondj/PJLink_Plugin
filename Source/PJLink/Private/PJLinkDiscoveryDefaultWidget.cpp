@@ -100,11 +100,92 @@ void UPJLinkDiscoveryDefaultWidget::UpdateProgressBar_Implementation(float Progr
         }
 
         // 프로그레스 바 색상 적용
-        if (SearchProgressBar->WidgetStyle.FillImage.GetResourceObject())
-        {
-            SearchProgressBar->SetFillColorAndOpacity(ProgressColor);
-        }
+        SearchProgressBar->SetFillColorAndOpacity(ProgressColor);
     }
+
+    // 애니메이션 이미지 회전 속도 업데이트
+    if (ScanningAnimationImage && DiscoveredDevices > 0)
+    {
+        // 발견된 장치 수에 따라 회전 속도 증가
+        float RotationRate = FMath::Clamp(1.0f + (DiscoveredDevices * 0.1f), 1.0f, 3.0f);
+
+        // 회전 애니메이션을 위한 초기화 코드
+        ScanningAnimationImage->SetVisibility(ESlateVisibility::Visible);
+
+        // 회전 애니메이션 속도 정보 저장 (블루프린트에서 사용)
+        AnimationSpeedMultiplier = RotationRate;
+    }
+    else if (ScanningAnimationImage && ProgressPercentage >= 100.0f)
+    {
+        // 완료 시 애니메이션 중지
+        ScanningAnimationImage->SetVisibility(ESlateVisibility::Hidden);
+    }
+
+    // 검색 진행 상태 텍스트 업데이트
+    if (StatusTextBlock)
+    {
+        FString StatusText;
+        if (ProgressPercentage < 100.0f)
+        {
+            StatusText = FString::Printf(TEXT("검색 진행 중... %d%% 완료 (%d개 장치 발견)"),
+                FMath::RoundToInt(ProgressPercentage), DiscoveredDevices);
+        }
+        else
+        {
+            StatusText = FString::Printf(TEXT("검색 완료. %d개 장치 발견"), DiscoveredDevices);
+        }
+        StatusTextBlock->SetText(FText::FromString(StatusText));
+    }
+
+    // 스캔된 주소 수 표시 업데이트
+    if (ScannedAddressesText)
+    {
+        FString AddressText = FString::Printf(TEXT("스캔된 주소: %d"), ScannedAddresses);
+        ScannedAddressesText->SetText(FText::FromString(AddressText));
+    }
+}
+
+    // 애니메이션 이미지 회전 속도 업데이트
+    if (ScanningAnimationImage && DiscoveredDevices > 0)
+    {
+        // 발견된 장치 수에 따라 회전 속도 증가
+        float RotationRate = FMath::Clamp(1.0f + (DiscoveredDevices * 0.1f), 1.0f, 3.0f);
+
+        // 회전 애니메이션을 위한 초기화 코드
+        ScanningAnimationImage->SetVisibility(ESlateVisibility::Visible);
+
+        // 회전 애니메이션 속도 정보 저장 (블루프린트에서 사용)
+        AnimationSpeedMultiplier = RotationRate;
+    }
+    else if (ScanningAnimationImage && ProgressPercentage >= 100.0f)
+    {
+        // 완료 시 애니메이션 중지
+        ScanningAnimationImage->SetVisibility(ESlateVisibility::Hidden);
+    }
+
+    // 검색 진행 상태 텍스트 업데이트
+    if (StatusTextBlock)
+    {
+        FString StatusText;
+        if (ProgressPercentage < 100.0f)
+        {
+            StatusText = FString::Printf(TEXT("검색 진행 중... %d%% 완료 (%d개 장치 발견)"),
+                FMath::RoundToInt(ProgressPercentage), DiscoveredDevices);
+        }
+        else
+        {
+            StatusText = FString::Printf(TEXT("검색 완료. %d개 장치 발견"), DiscoveredDevices);
+        }
+        StatusTextBlock->SetText(FText::FromString(StatusText));
+    }
+
+    // 스캔된 주소 수 표시 업데이트
+    if (ScannedAddressesText)
+    {
+        FString AddressText = FString::Printf(TEXT("스캔된 주소: %d"), ScannedAddresses);
+        ScannedAddressesText->SetText(FText::FromString(AddressText));
+    }
+}
 
     // 애니메이션 이미지 회전 속도 업데이트 (선택적)
     if (ScanningAnimationImage && DiscoveredDevices > 0)

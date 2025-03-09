@@ -400,7 +400,6 @@ void UPJLinkDiscoveryWidget::OnDeviceDiscovered(const FPJLinkDiscoveryResult& Di
     }
 }
 
-// 수정된 함수:
 void UPJLinkDiscoveryWidget::OnDiscoveryProgressUpdated(const FPJLinkDiscoveryStatus& Status)
 {
     // 진행 상황 백분율 계산 - 보다 정확하고 부드러운 업데이트를 위해 수정

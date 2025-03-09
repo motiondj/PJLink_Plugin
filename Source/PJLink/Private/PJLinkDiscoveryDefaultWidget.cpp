@@ -66,7 +66,6 @@ void UPJLinkDiscoveryDefaultWidget::NativeConstruct()
     }
 }
 
-// 수정된 코드:
 void UPJLinkDiscoveryDefaultWidget::UpdateProgressBar_Implementation(float ProgressPercentage, int32 DiscoveredDevices, int32 ScannedAddresses)
 {
     if (SearchProgressBar)
@@ -124,11 +123,88 @@ void UPJLinkDiscoveryDefaultWidget::UpdateProgressBar_Implementation(float Progr
     }
 }
 
-void UPJLinkDiscoveryDefaultWidget::UpdateCurrentScanAddress_Implementation(const FString& CurrentAddress)
-{
-    if (CurrentIPTextBlock)
+    // 애니메이션 이미지 회전 속도 업데이트 (선택적)
+    if (ScanningAnimationImage && DiscoveredDevices > 0)
     {
-        CurrentIPTextBlock->SetText(FText::FromString(CurrentAddress));
+        // 발견된 장치 수에 따라 회전 속도 증가
+        float RotationRate = FMath::Clamp(1.0f + (DiscoveredDevices * 0.1f), 1.0f, 3.0f);
+
+        // 회전 애니메이션을 위한 초기화 코드
+        // 참고: 실제 회전 애니메이션은 블루프린트에서 구현됩니다
+        ScanningAnimationImage->SetVisibility(ESlateVisibility::Visible);
+    }
+    else if (ScanningAnimationImage && ProgressPercentage >= 100.0f)
+    {
+        // 완료 시 애니메이션 중지
+        ScanningAnimationImage->SetVisibility(ESlateVisibility::Hidden);
+    }
+}
+
+void UPJLinkDiscoveryDefaultWidget::UpdateElapsedTime_Implementation(const FString& ElapsedTimeString)
+{
+    if (ElapsedTimeTextBlock)
+    {
+        // 소요 시간 텍스트 설정
+        ElapsedTimeTextBlock->SetText(FText::FromString(ElapsedTimeString));
+
+        // 시간 문자열에서 초 단위로 변환하여 색상 결정
+        float TotalSeconds = 0.0f;
+
+        // "X분 Y초", "X.Y초" 형식의 문자열에서 시간 추출
+        if (ElapsedTimeString.Contains(TEXT("분")))
+        {
+            // "X분 Y초" 형식 파싱
+            FString MinutesStr, SecondsStr;
+            ElapsedTimeString.Split(TEXT("분 "), &MinutesStr, &SecondsStr);
+
+            int32 Minutes = FCString::Atoi(*MinutesStr);
+            // "Y초" 에서 숫자만 추출
+            SecondsStr.Split(TEXT("초"), &SecondsStr, nullptr);
+            int32 Seconds = FCString::Atoi(*SecondsStr.TrimEnd());
+
+            TotalSeconds = Minutes * 60.0f + Seconds;
+        }
+        else if (ElapsedTimeString.EndsWith(TEXT("초")))
+        {
+            // "X.Y초" 형식 파싱
+            FString SecondsStr;
+            ElapsedTimeString.Split(TEXT("초"), &SecondsStr, nullptr);
+            TotalSeconds = FCString::Atof(*SecondsStr);
+        }
+
+        // 시간에 따른 색상 결정
+        FLinearColor TimeColor = TimerNormalColor;
+
+        if (TotalSeconds >= TimerCriticalThreshold)
+        {
+            // 위험 시간 초과
+            TimeColor = TimerCriticalColor;
+        }
+        else if (TotalSeconds >= TimerWarningThreshold)
+        {
+            // 경고 시간 초과
+            TimeColor = TimerWarningColor;
+        }
+
+        // 색상 적용
+        ElapsedTimeTextBlock->SetColorAndOpacity(FSlateColor(TimeColor));
+
+        // 긴 시간이 걸리는 경우 시각적 표시 추가 (선택적)
+        if (TotalSeconds >= TimerWarningThreshold)
+        {
+            // 글꼴 크기를 약간 키우거나 글꼴 스타일 변경
+            FSlateFontInfo CurrentFont = ElapsedTimeTextBlock->Font;
+            CurrentFont.Size += 1; // 폰트 크기 약간 증가
+            CurrentFont.TypefaceFontName = TEXT("Bold"); // 볼드체로 변경
+            ElapsedTimeTextBlock->SetFont(CurrentFont);
+        }
+        else
+        {
+            // 일반 폰트 스타일로 복원
+            FSlateFontInfo DefaultFont = ElapsedTimeTextBlock->Font;
+            DefaultFont.TypefaceFontName = TEXT("Regular"); // 일반 폰트로 변경
+            ElapsedTimeTextBlock->SetFont(DefaultFont);
+        }
     }
 }
 

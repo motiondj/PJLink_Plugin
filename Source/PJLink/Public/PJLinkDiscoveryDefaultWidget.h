@@ -76,6 +76,38 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|UI")
     TSubclassOf<UUserWidget> ResultItemWidgetClass;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|UI|Timer")
+    FLinearColor TimerNormalColor = FLinearColor(0.2f, 0.6f, 1.0f, 1.0f); // 파란색
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|UI|Timer")
+    FLinearColor TimerWarningColor = FLinearColor(1.0f, 0.8f, 0.2f, 1.0f); // 노란색
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|UI|Timer")
+    FLinearColor TimerCriticalColor = FLinearColor(1.0f, 0.3f, 0.3f, 1.0f); // 빨간색
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|UI|Timer")
+    float TimerWarningThreshold = 60.0f; // 60초(1분) 이상이면 경고색으로 변경
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|UI|Timer")
+    float TimerCriticalThreshold = 300.0f; // 300초(5분) 이상이면 위험색으로 변경
+
+    // 타이머 색상 설정
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|UI|Timer")
+    FLinearColor TimerNormalColor = FLinearColor(0.0f, 0.7f, 1.0f, 1.0f); // 기본 파란색
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|UI|Timer")
+    FLinearColor TimerWarningColor = FLinearColor(1.0f, 0.7f, 0.0f, 1.0f); // 노란색
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|UI|Timer")
+    FLinearColor TimerCriticalColor = FLinearColor(1.0f, 0.3f, 0.3f, 1.0f); // 빨간색
+
+    // 타이머 임계값 설정 (초)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|UI|Timer")
+    float TimerWarningThreshold = 30.0f; // 30초 이상이면 경고색
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|UI|Timer")
+    float TimerCriticalThreshold = 60.0f; // 60초 이상이면 위험색
+
 protected:
     // 부모 클래스의 블루프린트 이벤트 구현
     virtual void UpdateProgressBar_Implementation(float ProgressPercentage, int32 DiscoveredDevices, int32 ScannedAddresses) override;

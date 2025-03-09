@@ -12,6 +12,7 @@ class UPJLinkComponent;
 class UPJLinkPresetManager;
 class UPJLinkStateMachine;
 class UPJLinkNetworkManager;
+class UPJLinkDiscoveryManager;
 
 // 모듈 클래스 선언
 class PJLINK_API FPJLinkModule : public IModuleInterface

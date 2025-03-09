@@ -2,6 +2,7 @@
 #include "PJLinkBlueprintLibrary.h"
 #include "PJLinkSubsystem.h" // 여기서 완전한 정의 포함
 #include "Kismet/GameplayStatics.h"
+#include "PJLinkDiscoveryManager.h"
 
 UPJLinkSubsystem* UPJLinkBlueprintLibrary::GetPJLinkSubsystem(const UObject* WorldContextObject)
 {
@@ -127,4 +128,68 @@ FPJLinkProjectorInfo UPJLinkBlueprintLibrary::GetProjectorInfo(const UObject* Wo
     }
 
     return FPJLinkProjectorInfo();
+}
+
+UPJLinkDiscoveryManager* UPJLinkBlueprintLibrary::CreatePJLinkDiscoveryManager(const UObject* WorldContextObject, AActor* OwnerActor)
+{
+    UObject* Outer = OwnerActor ? OwnerActor : const_cast<UObject*>(WorldContextObject);
+    if (!Outer)
+    {
+        return nullptr;
+    }
+
+    return NewObject<UPJLinkDiscoveryManager>(Outer);
+}
+
+FString UPJLinkBlueprintLibrary::DiscoverPJLinkDevices(const UObject* WorldContextObject, UPJLinkDiscoveryManager*& OutDiscoveryManager, float TimeoutSeconds)
+{
+    // 매니저 생성
+    if (!OutDiscoveryManager)
+    {
+        OutDiscoveryManager = CreatePJLinkDiscoveryManager(WorldContextObject);
+    }
+
+    if (!OutDiscoveryManager)
+    {
+        return TEXT("");
+    }
+
+    // 브로드캐스트 검색 시작
+    return OutDiscoveryManager->StartBroadcastDiscovery(TimeoutSeconds);
+}
+
+FString UPJLinkBlueprintLibrary::ScanIPRangeForPJLinkDevices(const UObject* WorldContextObject, UPJLinkDiscoveryManager*& OutDiscoveryManager,
+    const FString& StartIP, const FString& EndIP, float TimeoutSeconds)
+{
+    // 매니저 생성
+    if (!OutDiscoveryManager)
+    {
+        OutDiscoveryManager = CreatePJLinkDiscoveryManager(WorldContextObject);
+    }
+
+    if (!OutDiscoveryManager)
+    {
+        return TEXT("");
+    }
+
+    // IP 범위 스캔 시작
+    return OutDiscoveryManager->StartRangeScan(StartIP, EndIP, TimeoutSeconds);
+}
+
+FString UPJLinkBlueprintLibrary::ScanSubnetForPJLinkDevices(const UObject* WorldContextObject, UPJLinkDiscoveryManager*& OutDiscoveryManager,
+    const FString& SubnetAddress, const FString& SubnetMask, float TimeoutSeconds)
+{
+    // 매니저 생성
+    if (!OutDiscoveryManager)
+    {
+        OutDiscoveryManager = CreatePJLinkDiscoveryManager(WorldContextObject);
+    }
+
+    if (!OutDiscoveryManager)
+    {
+        return TEXT("");
+    }
+
+    // 서브넷 스캔 시작
+    return OutDiscoveryManager->StartSubnetScan(SubnetAddress, SubnetMask, TimeoutSeconds);
 }

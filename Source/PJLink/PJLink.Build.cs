@@ -28,8 +28,8 @@ public class PJLink : ModuleRules
                 "Engine",
                 "InputCore",
                 "Projects",
-                "Sockets", // 소켓 통신을 위해 추가
-                "Networking", // 네트워킹 기능을 위해 추가
+                "Sockets", // 소켓 통신을 위해 필요함
+                "Networking", // 네트워킹 기능을 위해 필요함
                 "Json",
                 "JsonUtilities",
             }

@@ -91,4 +91,30 @@ public:
      */
     UFUNCTION(BlueprintPure, Category = "PJLink", meta = (WorldContext = "WorldContextObject"))
     static FPJLinkProjectorInfo GetProjectorInfo(const UObject* WorldContextObject);
+
+    /**
+ * PJLink 장치 검색 매니저 생성
+ */
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery", meta = (WorldContext = "WorldContextObject"))
+    static UPJLinkDiscoveryManager* CreatePJLinkDiscoveryManager(const UObject* WorldContextObject, AActor* OwnerActor = nullptr);
+
+    /**
+     * 로컬 네트워크에서 UDP 브로드캐스트로 PJLink 장치 검색
+     */
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery", meta = (WorldContext = "WorldContextObject"))
+    static FString DiscoverPJLinkDevices(const UObject* WorldContextObject, UPJLinkDiscoveryManager*& OutDiscoveryManager, float TimeoutSeconds = 5.0f);
+
+    /**
+     * IP 범위 내에서 PJLink 장치 검색
+     */
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery", meta = (WorldContext = "WorldContextObject"))
+    static FString ScanIPRangeForPJLinkDevices(const UObject* WorldContextObject, UPJLinkDiscoveryManager*& OutDiscoveryManager,
+        const FString& StartIP, const FString& EndIP, float TimeoutSeconds = 10.0f);
+
+    /**
+     * 서브넷 내에서 PJLink 장치 검색
+     */
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery", meta = (WorldContext = "WorldContextObject"))
+    static FString ScanSubnetForPJLinkDevices(const UObject* WorldContextObject, UPJLinkDiscoveryManager*& OutDiscoveryManager,
+        const FString& SubnetAddress, const FString& SubnetMask, float TimeoutSeconds = 20.0f);
 };

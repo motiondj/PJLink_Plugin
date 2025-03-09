@@ -66,11 +66,137 @@ void UPJLinkDiscoveryDefaultWidget::NativeConstruct()
     }
 }
 
+// 수정된 코드:
 void UPJLinkDiscoveryDefaultWidget::UpdateProgressBar_Implementation(float ProgressPercentage, int32 DiscoveredDevices, int32 ScannedAddresses)
 {
     if (SearchProgressBar)
     {
+        // 진행 바 값 업데이트
         SearchProgressBar->SetPercent(ProgressPercentage / 100.0f);
+
+        // 진행 바 색상 변경 (진행도에 따라)
+        FLinearColor ProgressColor;
+        if (ProgressPercentage < 25.0f)
+        {
+            // 시작 단계: 파란색
+            ProgressColor = FLinearColor(0.1f, 0.3f, 0.8f, 1.0f);
+        }
+        else if (ProgressPercentage < 75.0f)
+        {
+            // 중간 단계: 보라색~파란색 그라데이션
+            float Alpha = (ProgressPercentage - 25.0f) / 50.0f;
+            ProgressColor = FLinearColor::LerpUsingHSV(
+                FLinearColor(0.4f, 0.2f, 0.8f, 1.0f), // 보라색
+                FLinearColor(0.2f, 0.7f, 0.9f, 1.0f), // 밝은 파란색
+                Alpha);
+        }
+        else
+        {
+            // 완료 단계: 밝은 파란색~녹색 그라데이션
+            float Alpha = (ProgressPercentage - 75.0f) / 25.0f;
+            ProgressColor = FLinearColor::LerpUsingHSV(
+                FLinearColor(0.2f, 0.7f, 0.9f, 1.0f), // 밝은 파란색
+                FLinearColor(0.2f, 0.8f, 0.4f, 1.0f), // 녹색
+                Alpha);
+        }
+
+        // 프로그레스 바 색상 적용
+        if (SearchProgressBar->WidgetStyle.FillImage.GetResourceObject())
+        {
+            SearchProgressBar->SetFillColorAndOpacity(ProgressColor);
+        }
+    }
+
+    // 애니메이션 이미지 회전 속도 업데이트 (선택적)
+    if (ScanningAnimationImage && DiscoveredDevices > 0)
+    {
+        // 발견된 장치 수에 따라 회전 속도 증가
+        float RotationRate = FMath::Clamp(1.0f + (DiscoveredDevices * 0.1f), 1.0f, 3.0f);
+
+        // 회전 애니메이션을 위한 초기화 코드
+        // 참고: 실제 회전 애니메이션은 블루프린트에서 구현됩니다
+        ScanningAnimationImage->SetVisibility(ESlateVisibility::Visible);
+    }
+    else if (ScanningAnimationImage && ProgressPercentage >= 100.0f)
+    {
+        // 완료 시 애니메이션 중지
+        ScanningAnimationImage->SetVisibility(ESlateVisibility::Hidden);
+    }
+}
+
+void UPJLinkDiscoveryDefaultWidget::UpdateCurrentScanAddress_Implementation(const FString& CurrentAddress)
+{
+    if (CurrentIPTextBlock)
+    {
+        CurrentIPTextBlock->SetText(FText::FromString(CurrentAddress));
+    }
+}
+
+void UPJLinkDiscoveryDefaultWidget::UpdateElapsedTime_Implementation(const FString& ElapsedTimeString)
+{
+    if (ElapsedTimeTextBlock)
+    {
+        // 소요 시간 텍스트 설정
+        ElapsedTimeTextBlock->SetText(FText::FromString(ElapsedTimeString));
+
+        // 시간 문자열에서 초 단위로 변환하여 색상 결정
+        float TotalSeconds = 0.0f;
+
+        // "X분 Y초", "X.Y초" 형식의 문자열에서 시간 추출
+        if (ElapsedTimeString.Contains(TEXT("분")))
+        {
+            // "X분 Y초" 형식 파싱
+            FString MinutesStr, SecondsStr;
+            ElapsedTimeString.Split(TEXT("분 "), &MinutesStr, &SecondsStr);
+
+            int32 Minutes = FCString::Atoi(*MinutesStr);
+            // "Y초" 에서 숫자만 추출
+            SecondsStr.Split(TEXT("초"), &SecondsStr, nullptr);
+            int32 Seconds = FCString::Atoi(*SecondsStr.TrimEnd());
+
+            TotalSeconds = Minutes * 60.0f + Seconds;
+        }
+        else if (ElapsedTimeString.EndsWith(TEXT("초")))
+        {
+            // "X.Y초" 형식 파싱
+            FString SecondsStr;
+            ElapsedTimeString.Split(TEXT("초"), &SecondsStr, nullptr);
+            TotalSeconds = FCString::Atof(*SecondsStr);
+        }
+
+        // 시간에 따른 색상 결정
+        FLinearColor TimeColor = TimerNormalColor;
+
+        if (TotalSeconds >= TimerCriticalThreshold)
+        {
+            // 위험 시간 초과
+            TimeColor = TimerCriticalColor;
+        }
+        else if (TotalSeconds >= TimerWarningThreshold)
+        {
+            // 경고 시간 초과
+            TimeColor = TimerWarningColor;
+        }
+
+        // 색상 적용
+        ElapsedTimeTextBlock->SetColorAndOpacity(FSlateColor(TimeColor));
+
+        // 긴 시간이 걸리는 경우 시각적 표시 추가 (선택적)
+        if (TotalSeconds >= TimerWarningThreshold)
+        {
+            // 글꼴 크기를 약간 키우거나 글꼴 스타일 변경
+            FSlateFontInfo CurrentFont = ElapsedTimeTextBlock->Font;
+            CurrentFont.Size += 1; // 폰트 크기 약간 증가
+            CurrentFont.TypefaceFontName = TEXT("Bold"); // 볼드체로 변경
+            ElapsedTimeTextBlock->SetFont(CurrentFont);
+        }
+        else
+        {
+            // 일반 폰트 스타일로 복원
+            FSlateFontInfo DefaultFont = ElapsedTimeTextBlock->Font;
+            DefaultFont.TypefaceFontName = TEXT("Regular"); // 일반 폰트로 변경
+            ElapsedTimeTextBlock->SetFont(DefaultFont);
+        }
     }
 }
 
@@ -222,6 +348,163 @@ void UPJLinkDiscoveryDefaultWidget::OnDiscoveryStateChanged_Implementation(EPJLi
         {
             SearchProgressBar->SetPercent(0.0f);
         }
+    }
+    // 상태에 따른 UI 업데이트
+    switch (NewState)
+    {
+    case EPJLinkDiscoveryState::Searching:
+        // 검색 진행 중 상태 UI
+        if (StatusTextBlock)
+        {
+            // 텍스트 색상을 파란색으로 변경
+            StatusTextBlock->SetColorAndOpacity(FSlateColor(FLinearColor(0.2f, 0.6f, 1.0f, 1.0f)));
+        }
+
+        if (SearchProgressBar)
+        {
+            // 진행 바 표시
+            SearchProgressBar->SetVisibility(ESlateVisibility::Visible);
+        }
+
+        if (ElapsedTimeTextBlock)
+        {
+            // 타이머 표시
+            ElapsedTimeTextBlock->SetVisibility(ESlateVisibility::Visible);
+            // 기본 색상으로 초기화
+            ElapsedTimeTextBlock->SetColorAndOpacity(FSlateColor(TimerNormalColor));
+        }
+
+        if (CurrentIPTextBlock)
+        {
+            // 현재 스캔 중인 IP 표시
+            CurrentIPTextBlock->SetVisibility(ESlateVisibility::Visible);
+        }
+
+        if (ScanningAnimationImage)
+        {
+            // 스캔 애니메이션 표시
+            ScanningAnimationImage->SetVisibility(ESlateVisibility::Visible);
+        }
+        break;
+
+    case EPJLinkDiscoveryState::Completed:
+        // 검색 완료 상태 UI
+        if (StatusTextBlock)
+        {
+            // 텍스트 색상을 녹색으로 변경
+            StatusTextBlock->SetColorAndOpacity(FSlateColor(FLinearColor(0.2f, 0.8f, 0.2f, 1.0f)));
+        }
+
+        if (SearchProgressBar)
+        {
+            // 진행 바 100%로 설정
+            SearchProgressBar->SetPercent(1.0f);
+            // 진행 바 색상을 녹색으로 변경
+            SearchProgressBar->SetFillColorAndOpacity(FLinearColor(0.2f, 0.8f, 0.4f, 1.0f));
+        }
+
+        if (CurrentIPTextBlock)
+        {
+            // 현재 스캔 중인 IP 숨기기
+            CurrentIPTextBlock->SetVisibility(ESlateVisibility::Collapsed);
+        }
+
+        if (ScanningAnimationImage)
+        {
+            // 스캔 애니메이션 숨기기
+            ScanningAnimationImage->SetVisibility(ESlateVisibility::Collapsed);
+        }
+        break;
+
+    case EPJLinkDiscoveryState::Cancelled:
+        // 검색 취소 상태 UI
+        if (StatusTextBlock)
+        {
+            // 텍스트 색상을 노란색으로 변경
+            StatusTextBlock->SetColorAndOpacity(FSlateColor(FLinearColor(1.0f, 0.8f, 0.2f, 1.0f)));
+        }
+
+        if (SearchProgressBar)
+        {
+            // 진행 바 숨기기
+            SearchProgressBar->SetVisibility(ESlateVisibility::Hidden);
+        }
+
+        if (CurrentIPTextBlock)
+        {
+            // 현재 스캔 중인 IP 숨기기
+            CurrentIPTextBlock->SetVisibility(ESlateVisibility::Collapsed);
+        }
+
+        if (ScanningAnimationImage)
+        {
+            // 스캔 애니메이션 숨기기
+            ScanningAnimationImage->SetVisibility(ESlateVisibility::Collapsed);
+        }
+        break;
+
+    case EPJLinkDiscoveryState::Failed:
+        // 검색 실패 상태 UI
+        if (StatusTextBlock)
+        {
+            // 텍스트 색상을 빨간색으로 변경
+            StatusTextBlock->SetColorAndOpacity(FSlateColor(FLinearColor(1.0f, 0.3f, 0.3f, 1.0f)));
+        }
+
+        if (SearchProgressBar)
+        {
+            // 진행 바 숨기기
+            SearchProgressBar->SetVisibility(ESlateVisibility::Hidden);
+        }
+
+        if (CurrentIPTextBlock)
+        {
+            // 현재 스캔 중인 IP 숨기기
+            CurrentIPTextBlock->SetVisibility(ESlateVisibility::Collapsed);
+        }
+
+        if (ScanningAnimationImage)
+        {
+            // 스캔 애니메이션 숨기기
+            ScanningAnimationImage->SetVisibility(ESlateVisibility::Collapsed);
+        }
+        break;
+
+    case EPJLinkDiscoveryState::Idle:
+    default:
+        // 대기 상태 UI
+        if (StatusTextBlock)
+        {
+            // 텍스트 색상을 기본색으로 변경
+            StatusTextBlock->SetColorAndOpacity(FSlateColor(FLinearColor::White));
+        }
+
+        if (SearchProgressBar)
+        {
+            // 진행 바 0%로 설정
+            SearchProgressBar->SetPercent(0.0f);
+            // 진행 바 표시 (선택적)
+            SearchProgressBar->SetVisibility(ESlateVisibility::Visible);
+        }
+
+        if (ElapsedTimeTextBlock)
+        {
+            // 타이머 숨기기
+            ElapsedTimeTextBlock->SetVisibility(ESlateVisibility::Hidden);
+        }
+
+        if (CurrentIPTextBlock)
+        {
+            // 현재 스캔 중인 IP 숨기기
+            CurrentIPTextBlock->SetVisibility(ESlateVisibility::Collapsed);
+        }
+
+        if (ScanningAnimationImage)
+        {
+            // 스캔 애니메이션 숨기기
+            ScanningAnimationImage->SetVisibility(ESlateVisibility::Collapsed);
+        }
+        break;
     }
 }
 

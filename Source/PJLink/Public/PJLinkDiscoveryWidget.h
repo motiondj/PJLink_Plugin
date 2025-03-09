@@ -265,10 +265,11 @@ protected:
     UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery")
     void OnHideMessage();
 
-    /**
-     * 진행 상황 애니메이션 시작
-     * 블루프린트에서 구현하여 회전 또는 깜박임 애니메이션을 시작
-     */
+    // 수정된 코드:
+/**
+ * 진행 상황 애니메이션 시작
+ * 블루프린트에서 구현하여 회전 또는 깜박임 애니메이션을 시작
+ */
     UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery|UI")
     void StartProgressAnimation();
 
@@ -285,6 +286,30 @@ protected:
      */
     UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery|UI")
     void UpdateProgressAnimation(float ProgressPercentage);
+
+    /**
+     * 현재 스캔 중인 IP 주소 업데이트
+     * 블루프린트에서 구현하여 현재 스캔 중인 IP 주소 정보 표시
+     */
+    UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery|UI")
+    void UpdateCurrentScanAddress(const FString& CurrentAddress);
+
+    /**
+     * 검색 소요 시간 업데이트
+     * 블루프린트에서 구현하여 현재 검색 소요 시간 표시
+     */
+    UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery|UI")
+    void UpdateElapsedTime(const FString& ElapsedTimeString);
+
+    // 다음 속성 추가 (위젯의 private 영역 위에 추가)
+    UPROPERTY(BlueprintReadOnly, Category = "PJLink|Discovery|UI")
+    FString CurrentScanAddress;
+
+    UPROPERTY(BlueprintReadOnly, Category = "PJLink|Discovery|UI")
+    FString CurrentElapsedTimeString;
+
+    UPROPERTY(BlueprintReadOnly, Category = "PJLink|Discovery|UI")
+    float AnimationSpeedMultiplier = 1.0f;
 
     // 검색 상태 설정
     void SetDiscoveryState(EPJLinkDiscoveryState NewState);

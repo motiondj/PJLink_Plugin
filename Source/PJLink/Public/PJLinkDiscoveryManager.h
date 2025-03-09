@@ -11,38 +11,49 @@
  * PJLink 장치 검색 결과를 나타내는 구조체
  */
 USTRUCT(BlueprintType)
-struct PJLINK_API FPJLinkDiscoveryResult
+struct PJLINK_API FPJLinkDiscoveryStatus
 {
     GENERATED_BODY()
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery")
-    FString IPAddress;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PJLink|Discovery")
+    FString DiscoveryID;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery")
-    int32 Port = 4352;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PJLink|Discovery")
+    int32 TotalAddresses = 0;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery")
-    FString Name;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PJLink|Discovery")
+    int32 ScannedAddresses = 0;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery")
-    FString ModelName;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PJLink|Discovery")
+    int32 DiscoveredDevices = 0;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery")
-    EPJLinkClass DeviceClass = EPJLinkClass::Class1;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PJLink|Discovery")
+    float ProgressPercentage = 0.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery")
-    bool bRequiresAuthentication = false;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PJLink|Discovery")
+    bool bIsComplete = false;
 
-    // 발견 시간
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery")
-    FDateTime DiscoveryTime;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PJLink|Discovery")
+    bool bWasCancelled = false;
 
-    // 응답 시간 (밀리초)
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery")
-    int32 ResponseTimeMs = 0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PJLink|Discovery")
+    FDateTime StartTime;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PJLink|Discovery")
+    FTimespan ElapsedTime;
+
+    // 추가된 필드
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PJLink|Discovery")
+    FString CurrentScanningIP;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PJLink|Discovery")
+    float ScanSpeedIPsPerSecond = 0.0f;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PJLink|Discovery")
+    FTimespan EstimatedTimeRemaining;
 
     // 기본 생성자
-    FPJLinkDiscoveryResult() : DiscoveryTime(FDateTime::Now()) {}
+    FPJLinkDiscoveryStatus() : StartTime(FDateTime::Now()) {}
 };
 
 /**
@@ -241,6 +252,12 @@ public:
     UPROPERTY(BlueprintAssignable, Category = "PJLink|Discovery|Events")
     FPJLinkDiscoveryProgressDelegate OnDiscoveryProgress;
 
+    // 현재 스캔 중인 IP 주소 이벤트 (추가)
+    DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FPJLinkCurrentScanAddressDelegate, const FString&, CurrentAddress);
+
+    UPROPERTY(BlueprintAssignable, Category = "PJLink|Discovery|Events")
+    FPJLinkCurrentScanAddressDelegate OnCurrentScanAddressChanged;
+
     UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery|Diagnostic")
     FPJLinkDiagnosticData GetDiscoveryDiagnosticData() const { return DiscoveryDiagnosticData; }
 
@@ -318,4 +335,11 @@ private:
 
     // 활성 스캔 작업 추적을 위한 맵
     TMap<FString, class FAutoDeleteAsyncTask<FScanWorker>*> ActiveScanTasks;
+
+    // 현재 스캔 중인 IP 주소 (실시간 업데이트용)
+    FString CurrentScanningIPAddress;
+
+    // IP 스캔 시간 추적을 위한 변수
+    FDateTime LastIPScanTime;
+    FDateTime CurrentIPScanTime;
 };

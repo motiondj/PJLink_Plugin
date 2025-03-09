@@ -400,6 +400,7 @@ void UPJLinkDiscoveryWidget::OnDeviceDiscovered(const FPJLinkDiscoveryResult& Di
     }
 }
 
+// 수정된 함수:
 void UPJLinkDiscoveryWidget::OnDiscoveryProgressUpdated(const FPJLinkDiscoveryStatus& Status)
 {
     // 진행 상황 백분율 계산 - 보다 정확하고 부드러운 업데이트를 위해 수정
@@ -410,12 +411,120 @@ void UPJLinkDiscoveryWidget::OnDiscoveryProgressUpdated(const FPJLinkDiscoverySt
     // 진행 바 업데이트 호출
     UpdateProgressBar(ProgressPercentage, Status.DiscoveredDevices, Status.ScannedAddresses);
 
-    // 상태 텍스트 - 더 자세한 정보 제공
-    FString ElapsedTimeText = Status.ElapsedTime.GetSeconds() < 60
-        ? FString::Printf(TEXT("%.1f초"), Status.ElapsedTime.GetTotalSeconds())
-        : FString::Printf(TEXT("%d분 %d초"), FMath::FloorToInt(Status.ElapsedTime.GetTotalMinutes()),
-            FMath::FloorToInt(Status.ElapsedTime.GetTotalSeconds()) % 60);
+    // 검색 소요 시간 문자열 생성 및 포맷팅 개선
+    FString ElapsedTimeText;
 
+    // 시간 단위에 따른 형식화
+    if (Status.ElapsedTime.GetHours() > 0)
+    {
+        // 시간 단위 표시
+        ElapsedTimeText = FString::Printf(TEXT("%d시간 %d분 %d초"),
+            Status.ElapsedTime.GetHours(),
+            Status.ElapsedTime.GetMinutes() % 60,
+            FMath::FloorToInt(Status.ElapsedTime.GetTotalSeconds()) % 60);
+    }
+    else if (Status.ElapsedTime.GetMinutes() > 0)
+    {
+        // 분 단위 표시
+        ElapsedTimeText = FString::Printf(TEXT("%d분 %d초"),
+            Status.ElapsedTime.GetMinutes(),
+            FMath::FloorToInt(Status.ElapsedTime.GetTotalSeconds()) % 60);
+    }
+    else
+    {
+        // 초 단위 표시 (소수점 1자리까지)
+        ElapsedTimeText = FString::Printf(TEXT("%.1f초"), Status.ElapsedTime.GetTotalSeconds());
+    }
+
+    // 검색 완료 시 "총 소요 시간" 형식으로 변경
+    if (Status.bIsComplete)
+    {
+        ElapsedTimeText = FString::Printf(TEXT("총 소요 시간: %s"), *ElapsedTimeText);
+    }
+
+    // 검색 중일 때 예상 남은 시간 추가 (1분 이상 실행된 경우)
+    else if (Status.ElapsedTime.GetTotalSeconds() > 60.0f && Status.ScanSpeedIPsPerSecond > 0)
+    {
+        // 예상 남은 시간 형식화
+        FString RemainingTimeText;
+        if (Status.EstimatedTimeRemaining.GetTotalMinutes() < 1)
+        {
+            RemainingTimeText = FString::Printf(TEXT("약 %.0f초 남음"), Status.EstimatedTimeRemaining.GetTotalSeconds());
+        }
+        else if (Status.EstimatedTimeRemaining.GetTotalHours() < 1)
+        {
+            RemainingTimeText = FString::Printf(TEXT("약 %d분 %d초 남음"),
+                Status.EstimatedTimeRemaining.GetMinutes(),
+                FMath::FloorToInt(Status.EstimatedTimeRemaining.GetTotalSeconds()) % 60);
+        }
+        else
+        {
+            RemainingTimeText = FString::Printf(TEXT("약 %d시간 %d분 남음"),
+                Status.EstimatedTimeRemaining.GetHours(),
+                Status.EstimatedTimeRemaining.GetMinutes() % 60);
+        }
+
+        ElapsedTimeText = FString::Printf(TEXT("%s (%s)"), *ElapsedTimeText, *RemainingTimeText);
+    }
+
+    // 소요 시간 문자열 저장 및 업데이트 이벤트 호출
+    CurrentElapsedTimeString = ElapsedTimeText;
+    UpdateElapsedTime(ElapsedTimeText);
+
+    // 현재 스캔 중인 IP 주소 업데이트
+    if (!Status.bIsComplete && Status.ScannedAddresses > 0)
+    {
+        FString CurrentIP;
+        // Status에서 직접 현재 스캔 중인 IP 주소 사용
+        if (!Status.CurrentScanningIP.IsEmpty())
+        {
+            // 스캔 속도 및 예상 완료 시간 정보 추가
+            if (Status.ScanSpeedIPsPerSecond > 0)
+            {
+                // 남은 시간 형식화
+                FString RemainingTimeText;
+                if (Status.EstimatedTimeRemaining.GetTotalSeconds() < 60)
+                {
+                    RemainingTimeText = FString::Printf(TEXT("약 %.0f초 남음"), Status.EstimatedTimeRemaining.GetTotalSeconds());
+                }
+                else
+                {
+                    int32 Minutes = FMath::FloorToInt(Status.EstimatedTimeRemaining.GetTotalMinutes());
+                    int32 Seconds = FMath::FloorToInt(Status.EstimatedTimeRemaining.GetTotalSeconds()) % 60;
+                    RemainingTimeText = FString::Printf(TEXT("약 %d분 %d초 남음"), Minutes, Seconds);
+                }
+
+                CurrentIP = FString::Printf(TEXT("현재 스캔 중: %s (%.1f IP/초, %s)"),
+                    *Status.CurrentScanningIP, Status.ScanSpeedIPsPerSecond, *RemainingTimeText);
+            }
+            else
+            {
+                CurrentIP = FString::Printf(TEXT("현재 스캔 중: %s"), *Status.CurrentScanningIP);
+            }
+        }
+        else
+        {
+            // 기존 로직 유지 (IP 정보가 없는 경우를 위한 대비책)
+            CurrentIP = FString::Printf(TEXT("스캔 진행 중 (%d/%d)"), Status.ScannedAddresses, Status.TotalAddresses);
+        }
+
+        // IP 주소 저장 및 업데이트 이벤트 호출
+        CurrentScanAddress = CurrentIP;
+        UpdateCurrentScanAddress(CurrentIP);
+    }
+
+    // 진행 상황에 따른 애니메이션 속도 조정
+    if (bEnableProgressAnimation)
+    {
+        // 발견된 장치가 많을수록 애니메이션 속도 증가
+        AnimationSpeedMultiplier = 1.0f + (Status.DiscoveredDevices * 0.1f);
+        AnimationSpeedMultiplier = FMath::Clamp(AnimationSpeedMultiplier, 1.0f, 3.0f);
+
+        // 진행 애니메이션 업데이트
+        UpdateProgressAnimation(ProgressPercentage);
+    }
+
+    // 상태 텍스트 구성
     FString StatusText;
     if (Status.bIsComplete)
     {

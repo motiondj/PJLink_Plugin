@@ -976,6 +976,31 @@ void UPJLinkDiscoveryManager::PerformSubnetScan(const FString& DiscoveryID, uint
 
 void UPJLinkDiscoveryManager::ScanIPAddress(const FString& DiscoveryID, const FString& IPAddress, float TimeoutSeconds)
 {
+    // 현재 IP 주소 업데이트 및 스캔 시간 기록
+    CurrentScanningIPAddress = IPAddress;
+    LastIPScanTime = CurrentIPScanTime;
+    CurrentIPScanTime = FDateTime::Now();
+
+    // 이벤트 발생 (게임 스레드로 전달)
+    AsyncTask(ENamedThreads::GameThread, [this, IPAddress]() {
+        if (IsValid(this) && OnCurrentScanAddressChanged.IsBound())
+        {
+            OnCurrentScanAddressChanged.Broadcast(IPAddress);
+        }
+        });
+
+    // 스캔 시간 기록 - 진단용
+    PJLINK_CAPTURE_DIAGNOSTIC(DiscoveryDiagnosticData,
+        TEXT("Scanning IP address: %s"), *IPAddress);
+
+    // 스캔 간 소요 시간 계산 (첫 스캔이 아닌 경우)
+    if (LastIPScanTime != FDateTime())
+    {
+        FTimespan ScanInterval = CurrentIPScanTime - LastIPScanTime;
+        PJLINK_CAPTURE_DIAGNOSTIC(DiscoveryDiagnosticData,
+            TEXT("Time since last scan: %.2f ms"), ScanInterval.GetTotalMilliseconds());
+    }
+
     // 스캔 진행 상황 업데이트
     {
         FScopeLock Lock(&DiscoveryLock);
@@ -983,9 +1008,31 @@ void UPJLinkDiscoveryManager::ScanIPAddress(const FString& DiscoveryID, const FS
         {
             FPJLinkDiscoveryStatus& Status = DiscoveryStatuses[DiscoveryID];
             Status.ScannedAddresses++;
+
+            // 스캔 속도 계산 (초당 스캔 IP 수)
+            if (Status.ScannedAddresses > 1 && Status.ElapsedTime.GetTotalSeconds() > 0)
+            {
+                float ScanSpeed = Status.ScannedAddresses / Status.ElapsedTime.GetTotalSeconds();
+                Status.ScanSpeedIPsPerSecond = ScanSpeed;
+
+                // 남은 시간 추정
+                if (Status.TotalAddresses > Status.ScannedAddresses && ScanSpeed > 0)
+                {
+                    float RemainingIPs = Status.TotalAddresses - Status.ScannedAddresses;
+                    float EstimatedTimeSeconds = RemainingIPs / ScanSpeed;
+                    Status.EstimatedTimeRemaining = FTimespan::FromSeconds(EstimatedTimeSeconds);
+                }
+            }
+
+            // 현재 스캔 중인 IP 주소 업데이트
+            Status.CurrentScanningIP = IPAddress;
+
             UpdateDiscoveryProgress(DiscoveryID, Status.ScannedAddresses, Status.DiscoveredDevices);
         }
     }
+
+    // 기존 코드...
+}
 
     ISocketSubsystem* SocketSubsystem = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM);
     if (!SocketSubsystem)

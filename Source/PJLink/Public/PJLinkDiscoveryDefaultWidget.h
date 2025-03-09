@@ -33,13 +33,13 @@ public:
     class UButton* CancelSearchButton;
 
     UPROPERTY(BlueprintReadWrite, meta = (BindWidget), Category = "PJLink|UI")
-    class UProgressBar* SearchProgressBar;
+    class UTextBlock* CurrentIPTextBlock;
 
     UPROPERTY(BlueprintReadWrite, meta = (BindWidget), Category = "PJLink|UI")
-    class UTextBlock* StatusTextBlock;
+    class UTextBlock* ElapsedTimeTextBlock;
 
     UPROPERTY(BlueprintReadWrite, meta = (BindWidget), Category = "PJLink|UI")
-    class UScrollBox* ResultsScrollBox;
+    class UImage* ScanningAnimationImage;
 
     UPROPERTY(BlueprintReadWrite, meta = (BindWidget), Category = "PJLink|UI")
     class UComboBox* SortOptionsComboBox;

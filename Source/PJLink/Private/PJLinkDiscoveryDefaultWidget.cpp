@@ -66,6 +66,7 @@ void UPJLinkDiscoveryDefaultWidget::NativeConstruct()
     }
 }
 
+// PJLinkDiscoveryDefaultWidget.cpp 파일의 UpdateProgressBar_Implementation 함수 수정
 void UPJLinkDiscoveryDefaultWidget::UpdateProgressBar_Implementation(float ProgressPercentage, int32 DiscoveredDevices, int32 ScannedAddresses)
 {
     if (SearchProgressBar)
@@ -121,22 +122,6 @@ void UPJLinkDiscoveryDefaultWidget::UpdateProgressBar_Implementation(float Progr
         ScanningAnimationImage->SetVisibility(ESlateVisibility::Hidden);
     }
 
-    // 검색 진행 상태 텍스트 업데이트
-    if (StatusTextBlock)
-    {
-        FString StatusText;
-        if (ProgressPercentage < 100.0f)
-        {
-            StatusText = FString::Printf(TEXT("검색 진행 중... %d%% 완료 (%d개 장치 발견)"),
-                FMath::RoundToInt(ProgressPercentage), DiscoveredDevices);
-        }
-        else
-        {
-            StatusText = FString::Printf(TEXT("검색 완료. %d개 장치 발견"), DiscoveredDevices);
-        }
-        StatusTextBlock->SetText(FText::FromString(StatusText));
-    }
-
     // 스캔된 주소 수 표시 업데이트
     if (ScannedAddressesText)
     {
@@ -263,6 +248,7 @@ void UPJLinkDiscoveryDefaultWidget::UpdateProgressBar_Implementation(float Progr
     }
 }
 
+// PJLinkDiscoveryDefaultWidget.cpp 파일에 추가
 void UPJLinkDiscoveryDefaultWidget::UpdateElapsedTime_Implementation(const FString& ElapsedTimeString)
 {
     if (ElapsedTimeTextBlock)
@@ -330,7 +316,6 @@ void UPJLinkDiscoveryDefaultWidget::UpdateElapsedTime_Implementation(const FStri
         }
     }
 }
-
 void UPJLinkDiscoveryDefaultWidget::UpdateElapsedTime_Implementation(const FString& ElapsedTimeString)
 {
     if (ElapsedTimeTextBlock)

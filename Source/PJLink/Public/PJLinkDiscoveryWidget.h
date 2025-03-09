@@ -6,12 +6,37 @@
 #include "PJLinkDiscoveryManager.h"
 #include "PJLinkTypes.h"
 
+// 정렬 옵션 열거형을 확장
 UENUM(BlueprintType)
 enum class EPJLinkDiscoverySortOption : uint8
 {
     ByIPAddress UMETA(DisplayName = "IP 주소순"),
     ByName UMETA(DisplayName = "이름순"),
-    ByResponseTime UMETA(DisplayName = "응답시간순")
+    ByResponseTime UMETA(DisplayName = "응답시간순"),
+    ByModelName UMETA(DisplayName = "모델명순"), // 추가
+    ByDiscoveryTime UMETA(DisplayName = "발견시간순") // 추가
+};
+
+// 필터 옵션 열거형 추가
+UENUM(BlueprintType)
+enum class EPJLinkDiscoveryFilterOption : uint8
+{
+    All UMETA(DisplayName = "모두 표시"),
+    RequiresAuth UMETA(DisplayName = "인증 필요"),
+    NoAuth UMETA(DisplayName = "인증 불필요"),
+    Class1 UMETA(DisplayName = "클래스 1"),
+    Class2 UMETA(DisplayName = "클래스 2")
+};
+
+// 검색 상태 열거형
+UENUM(BlueprintType)
+enum class EPJLinkDiscoveryState : uint8
+{
+    Idle UMETA(DisplayName = "대기 중"),
+    Searching UMETA(DisplayName = "검색 중"),
+    Completed UMETA(DisplayName = "완료됨"),
+    Cancelled UMETA(DisplayName = "취소됨"),
+    Failed UMETA(DisplayName = "실패")
 };
 
 #include "PJLinkDiscoveryWidget.generated.h"
@@ -149,6 +174,54 @@ public:
     UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery")
     void HideMessage();
 
+    // 진행 상황 애니메이션 활성화 여부
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery|UI")
+    bool bEnableProgressAnimation = true;
+
+    // 진행 상황 애니메이션 속도 (초당 회전 수)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery|UI", meta = (EditCondition = "bEnableProgressAnimation", ClampMin = "0.1", ClampMax = "5.0"))
+    float ProgressAnimationSpeed = 1.0f;
+
+    // 현재 검색 상태
+    UPROPERTY(BlueprintReadOnly, Category = "PJLink|Discovery|UI")
+    EPJLinkDiscoveryState CurrentDiscoveryState = EPJLinkDiscoveryState::Idle;
+
+    // 검색 상태 변경 이벤트
+    UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery|Events")
+    void OnDiscoveryStateChanged(EPJLinkDiscoveryState NewState);
+
+    // 검색 상태 텍스트 가져오기
+    UFUNCTION(BlueprintPure, Category = "PJLink|Discovery|UI")
+    FString GetDiscoveryStateText() const;
+
+    // 현재 선택된 필터 옵션
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery|UI")
+    EPJLinkDiscoveryFilterOption CurrentFilterOption = EPJLinkDiscoveryFilterOption::All;
+
+    // 필터 옵션 설정
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery")
+    void SetFilterOption(EPJLinkDiscoveryFilterOption FilterOption);
+
+    // 정렬 옵션과 필터 옵션을 동시에 적용한 결과 가져오기
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery")
+    TArray<FPJLinkDiscoveryResult> GetFilteredAndSortedResults() const;
+
+    // 검색 결과 요약 텍스트 가져오기
+    UFUNCTION(BlueprintPure, Category = "PJLink|Discovery|UI")
+    FString GetResultSummaryText() const;
+
+    // 검색 결과 요약 색상 가져오기 (결과 수에 따라 다른 색상)
+    UFUNCTION(BlueprintPure, Category = "PJLink|Discovery|UI")
+    FLinearColor GetResultSummaryColor() const;
+
+    // 장치 상태 텍스트 가져오기
+    UFUNCTION(BlueprintPure, Category = "PJLink|Discovery|UI")
+    FString GetDeviceStatusText(const FPJLinkDiscoveryResult& Result) const;
+
+    // 장치 상태 색상 가져오기
+    UFUNCTION(BlueprintPure, Category = "PJLink|Discovery|UI")
+    FLinearColor GetDeviceStatusColor(const FPJLinkDiscoveryResult& Result) const;
+
 protected:
     /**
      * 검색 완료 이벤트 처리
@@ -191,6 +264,52 @@ protected:
 
     UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery")
     void OnHideMessage();
+
+    /**
+     * 진행 상황 애니메이션 시작
+     * 블루프린트에서 구현하여 회전 또는 깜박임 애니메이션을 시작
+     */
+    UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery|UI")
+    void StartProgressAnimation();
+
+    /**
+     * 진행 상황 애니메이션 중지
+     * 블루프린트에서 구현하여 애니메이션을 중지
+     */
+    UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery|UI")
+    void StopProgressAnimation();
+
+    /**
+     * 진행 상황 애니메이션 업데이트
+     * 진행률에 따라 애니메이션 속도나 색상 등을 조절
+     */
+    UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery|UI")
+    void UpdateProgressAnimation(float ProgressPercentage);
+
+    // 검색 상태 설정
+    void SetDiscoveryState(EPJLinkDiscoveryState NewState);
+
+    // 검색 결과 목록 항목 위젯 생성 이벤트
+    UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery|UI")
+    UUserWidget* CreateResultItemWidget(const FPJLinkDiscoveryResult& Result, int32 Index);
+
+    // 검색 결과 세부 정보 패널 업데이트 이벤트
+    UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery|UI")
+    void UpdateDetailPanel(const FPJLinkDiscoveryResult& SelectedResult);
+
+    // 장치 선택 이벤트
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery|UI")
+    void SelectDevice(int32 DeviceIndex);
+
+    // 현재 선택된 장치 인덱스
+    UPROPERTY(BlueprintReadOnly, Category = "PJLink|Discovery|UI")
+    int32 SelectedDeviceIndex = -1;
+
+    // 검색 결과 없음 UI 업데이트 이벤트
+    UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery|UI")
+    void ShowNoResultsMessage(bool bIsSearching, bool bHasFilters);
+
+    void PrepareResultsUpdate(const TArray<FPJLinkDiscoveryResult>& Results);
 
 private:
     /**
@@ -252,4 +371,20 @@ private:
 
     // private 섹션에 다음 함수 선언 추가:
     void SetupMessageTimer();
+
+    // UI 업데이트 제한을 위한 타이머
+    FTimerHandle UIUpdateTimerHandle;
+
+    // UI 업데이트 주기 (초)
+    UPROPERTY(EditAnywhere, Category = "PJLink|Discovery|Performance")
+    float UIUpdateInterval = 0.25f; // 0.25초마다 UI 업데이트
+
+    // 마지막 UI 업데이트 시간
+    float LastUIUpdateTime = 0.0f;
+
+    // 업데이트 대기 중인 UI 변경 사항 플래그
+    bool bPendingUIUpdate = false;
+
+    // 지연된 UI 업데이트 수행
+    void PerformDeferredUIUpdate();
 };

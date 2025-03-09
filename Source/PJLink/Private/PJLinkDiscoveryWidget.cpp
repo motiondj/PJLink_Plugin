@@ -21,6 +21,12 @@ void UPJLinkDiscoveryWidget::NativeConstruct()
 {
     Super::NativeConstruct();
 
+    // 타이머 초기값 설정
+    LastUIUpdateTime = GetWorld()->GetTimeSeconds();
+
+    // 초기 상태 설정
+    SetDiscoveryState(EPJLinkDiscoveryState::Idle);
+
     CreateDiscoveryManager();
 }
 
@@ -29,6 +35,12 @@ void UPJLinkDiscoveryWidget::NativeDestruct()
     if (DiscoveryManager)
     {
         DiscoveryManager->CancelAllDiscoveries();
+    }
+
+    // UI 업데이트 타이머 정리
+    if (UWorld* World = GetWorld())
+    {
+        World->GetTimerManager().ClearTimer(UIUpdateTimerHandle);
     }
 
     Super::NativeDestruct();
@@ -65,11 +77,14 @@ void UPJLinkDiscoveryWidget::StartBroadcastSearch(float TimeoutSeconds)
 
     // 기존 결과 초기화
     DiscoveryResults.Empty();
-    UpdateResultsList(DiscoveryResults);
+    PrepareResultsUpdate(GetFilteredAndSortedResults());
 
     // 상태 업데이트
     ShowInfoMessage(TEXT("브로드캐스트 검색을 시작합니다..."));
     UpdateProgressBar(0.0f, 0, 0);
+
+    // 검색 상태 설정
+    SetDiscoveryState(EPJLinkDiscoveryState::Searching);
 
     // 검색 시작
     CurrentDiscoveryID = DiscoveryManager->StartBroadcastDiscovery(TimeoutSeconds);
@@ -77,6 +92,8 @@ void UPJLinkDiscoveryWidget::StartBroadcastSearch(float TimeoutSeconds)
     if (CurrentDiscoveryID.IsEmpty())
     {
         ShowErrorMessage(TEXT("브로드캐스트 검색을 시작하지 못했습니다"));
+        // 검색 실패 상태 설정
+        SetDiscoveryState(EPJLinkDiscoveryState::Failed);
     }
 }
 
@@ -89,11 +106,14 @@ void UPJLinkDiscoveryWidget::StartRangeSearch(const FString& StartIP, const FStr
 
     // 기존 결과 초기화
     DiscoveryResults.Empty();
-    UpdateResultsList(DiscoveryResults);
+    PrepareResultsUpdate(GetFilteredAndSortedResults());
 
     // 상태 업데이트
     ShowInfoMessage(FString::Printf(TEXT("IP 범위 검색을 시작합니다 (%s - %s)..."), *StartIP, *EndIP));
     UpdateProgressBar(0.0f, 0, 0);
+
+    // 검색 상태 설정
+    SetDiscoveryState(EPJLinkDiscoveryState::Searching);
 
     // 검색 시작
     CurrentDiscoveryID = DiscoveryManager->StartRangeScan(StartIP, EndIP, TimeoutSeconds);
@@ -101,6 +121,8 @@ void UPJLinkDiscoveryWidget::StartRangeSearch(const FString& StartIP, const FStr
     if (CurrentDiscoveryID.IsEmpty())
     {
         ShowErrorMessage(TEXT("IP 범위 검색을 시작하지 못했습니다"));
+        // 검색 실패 상태 설정
+        SetDiscoveryState(EPJLinkDiscoveryState::Failed);
     }
 }
 
@@ -113,11 +135,14 @@ void UPJLinkDiscoveryWidget::StartSubnetSearch(const FString& SubnetAddress, con
 
     // 기존 결과 초기화
     DiscoveryResults.Empty();
-    UpdateResultsList(DiscoveryResults);
+    PrepareResultsUpdate(GetFilteredAndSortedResults());
 
     // 상태 업데이트
     ShowInfoMessage(FString::Printf(TEXT("서브넷 검색을 시작합니다 (%s/%s)..."), *SubnetAddress, *SubnetMask));
     UpdateProgressBar(0.0f, 0, 0);
+
+    // 검색 상태 설정
+    SetDiscoveryState(EPJLinkDiscoveryState::Searching);
 
     // 검색 시작
     CurrentDiscoveryID = DiscoveryManager->StartSubnetScan(SubnetAddress, SubnetMask, TimeoutSeconds);
@@ -125,6 +150,8 @@ void UPJLinkDiscoveryWidget::StartSubnetSearch(const FString& SubnetAddress, con
     if (CurrentDiscoveryID.IsEmpty())
     {
         ShowErrorMessage(TEXT("서브넷 검색을 시작하지 못했습니다"));
+        // 검색 실패 상태 설정
+        SetDiscoveryState(EPJLinkDiscoveryState::Failed);
     }
 }
 
@@ -134,6 +161,9 @@ void UPJLinkDiscoveryWidget::CancelSearch()
     {
         DiscoveryManager->CancelDiscovery(CurrentDiscoveryID);
         ShowInfoMessage(TEXT("검색이 취소되었습니다"));
+
+        // 검색 취소 상태 설정
+        SetDiscoveryState(EPJLinkDiscoveryState::Cancelled);
     }
 }
 
@@ -266,7 +296,7 @@ void UPJLinkDiscoveryWidget::OnDiscoveryCompleted(const TArray<FPJLinkDiscoveryR
     DiscoveryResults = DiscoveredDevices;
 
     // UI 업데이트
-    UpdateResultsList(GetFilteredAndSortedResults());
+    PrepareResultsUpdate(GetFilteredAndSortedResults());
 
     if (bSuccess)
     {
@@ -278,10 +308,19 @@ void UPJLinkDiscoveryWidget::OnDiscoveryCompleted(const TArray<FPJLinkDiscoveryR
         {
             ShowInfoMessage(TEXT("검색 완료, 장치를 찾지 못했습니다"));
         }
+
+        // 검색 완료 상태 설정
+        SetDiscoveryState(EPJLinkDiscoveryState::Completed);
     }
     else
     {
         ShowErrorMessage(TEXT("검색이 실패했거나 취소되었습니다"));
+
+        // 검색 실패 상태 설정 - 이미 취소 상태라면 그대로 유지
+        if (CurrentDiscoveryState != EPJLinkDiscoveryState::Cancelled)
+        {
+            SetDiscoveryState(EPJLinkDiscoveryState::Failed);
+        }
     }
 
     UpdateProgressBar(100.0f, DiscoveryResults.Num(), 0);
@@ -295,35 +334,111 @@ void UPJLinkDiscoveryWidget::OnDiscoveryCompleted(const TArray<FPJLinkDiscoveryR
 
 void UPJLinkDiscoveryWidget::OnDeviceDiscovered(const FPJLinkDiscoveryResult& DiscoveredDevice)
 {
-    // 결과 추가
-    DiscoveryResults.Add(DiscoveredDevice);
+    // 이미 같은 장치가 있는지 확인
+    bool bAlreadyExists = false;
+    for (const FPJLinkDiscoveryResult& ExistingDevice : DiscoveryResults)
+    {
+        if (ExistingDevice.IPAddress == DiscoveredDevice.IPAddress)
+        {
+            bAlreadyExists = true;
+            break;
+        }
+    }
 
-    // UI 업데이트
-    UpdateResultsList(GetFilteredAndSortedResults());
-    ShowInfoMessage(FString::Printf(TEXT("장치를 발견했습니다: %s"), *DiscoveredDevice.IPAddress));
+    // 새 장치인 경우에만 추가
+    if (!bAlreadyExists)
+    {
+        // 결과 추가
+        DiscoveryResults.Add(DiscoveredDevice);
+
+        // 장치 발견 메시지 표시 - 이름이 있으면 이름과 IP, 없으면 IP만 표시
+        FString DeviceName = DiscoveredDevice.Name.IsEmpty() ? DiscoveredDevice.IPAddress :
+            FString::Printf(TEXT("%s (%s)"), *DiscoveredDevice.Name, *DiscoveredDevice.IPAddress);
+
+        ShowInfoMessage(FString::Printf(TEXT("장치를 발견했습니다: %s"), *DeviceName));
+
+        // 발견된 장치 수에 따라 애니메이션 업데이트
+        if (bEnableProgressAnimation)
+        {
+            UpdateProgressAnimation(DiscoveryResults.Num() * 5.0f); // 장치 발견 시 애니메이션 속도 증가
+        }
+
+        // UI 업데이트 최적화 - 너무 자주 업데이트하지 않도록 조절
+        float CurrentTime = GetWorld()->GetTimeSeconds();
+        if (CurrentTime - LastUIUpdateTime >= UIUpdateInterval)
+        {
+            // 충분한 시간이 경과했으면 즉시 UI 업데이트
+            PrepareResultsUpdate(GetFilteredAndSortedResults());
+            LastUIUpdateTime = CurrentTime;
+            bPendingUIUpdate = false;
+
+            // 타이머 취소
+            if (UWorld* World = GetWorld())
+            {
+                World->GetTimerManager().ClearTimer(UIUpdateTimerHandle);
+            }
+        }
+        else
+        {
+            // 그렇지 않으면 업데이트 예약
+            bPendingUIUpdate = true;
+
+            // 이미 타이머가 활성화되어 있지 않다면 타이머 설정
+            if (UWorld* World = GetWorld())
+            {
+                if (!World->GetTimerManager().IsTimerActive(UIUpdateTimerHandle))
+                {
+                    World->GetTimerManager().SetTimer(
+                        UIUpdateTimerHandle,
+                        this,
+                        &UPJLinkDiscoveryWidget::PerformDeferredUIUpdate,
+                        UIUpdateInterval - (CurrentTime - LastUIUpdateTime),
+                        false);
+                }
+            }
+        }
+    }
 }
 
 void UPJLinkDiscoveryWidget::OnDiscoveryProgressUpdated(const FPJLinkDiscoveryStatus& Status)
 {
-    // 진행 상황 업데이트
-    UpdateProgressBar(Status.ProgressPercentage, Status.DiscoveredDevices, Status.ScannedAddresses);
+    // 진행 상황 백분율 계산 - 보다 정확하고 부드러운 업데이트를 위해 수정
+    float ProgressPercentage = Status.TotalAddresses > 0
+        ? FMath::Clamp(static_cast<float>(Status.ScannedAddresses) / static_cast<float>(Status.TotalAddresses) * 100.0f, 0.0f, 100.0f)
+        : 0.0f;
 
+    // 진행 바 업데이트 호출
+    UpdateProgressBar(ProgressPercentage, Status.DiscoveredDevices, Status.ScannedAddresses);
+
+    // 상태 텍스트 - 더 자세한 정보 제공
+    FString ElapsedTimeText = Status.ElapsedTime.GetSeconds() < 60
+        ? FString::Printf(TEXT("%.1f초"), Status.ElapsedTime.GetTotalSeconds())
+        : FString::Printf(TEXT("%d분 %d초"), FMath::FloorToInt(Status.ElapsedTime.GetTotalMinutes()),
+            FMath::FloorToInt(Status.ElapsedTime.GetTotalSeconds()) % 60);
+
+    FString StatusText;
     if (Status.bIsComplete)
     {
-        if (Status.DiscoveredDevices > 0)
+        if (Status.bWasCancelled)
         {
-            ShowSuccessMessage(FString::Printf(TEXT("검색 완료, %d개 장치를 찾았습니다"), Status.DiscoveredDevices));
+            StatusText = FString::Printf(TEXT("검색 취소됨. 발견된 장치: %d개 (검색 시간: %s)"),
+                Status.DiscoveredDevices, *ElapsedTimeText);
         }
         else
         {
-            ShowInfoMessage(TEXT("검색 완료, 장치를 찾지 못했습니다"));
+            StatusText = FString::Printf(TEXT("검색 완료! 발견된 장치: %d개 (검색 시간: %s)"),
+                Status.DiscoveredDevices, *ElapsedTimeText);
         }
     }
     else
     {
-        UpdateStatusText(FString::Printf(TEXT("검색 중... %d개 장치 발견 (%.1f%% 완료)"),
-            Status.DiscoveredDevices, Status.ProgressPercentage));
+        StatusText = FString::Printf(TEXT("검색 중... %d개 장치 발견 (%d/%d 주소 검색, %.1f%%, %s 경과)"),
+            Status.DiscoveredDevices, Status.ScannedAddresses, Status.TotalAddresses,
+            ProgressPercentage, *ElapsedTimeText);
     }
+
+    // 상태 텍스트 업데이트 호출
+    UpdateStatusText(StatusText);
 }
 
 bool UPJLinkDiscoveryWidget::SaveResultsToCache()
@@ -456,8 +571,7 @@ bool UPJLinkDiscoveryWidget::LoadCachedResults()
         DiscoveryResults.Add(Result);
     }
 
-    // UI 업데이트
-    UpdateResultsList(GetFilteredAndSortedResults());
+    PrepareResultsUpdate(GetFilteredAndSortedResults());  // 변경된 코드
 
     FTimespan TimeSinceCache = FDateTime::Now() - LastCacheTime;
     double HoursSinceCache = TimeSinceCache.GetTotalHours();
@@ -573,4 +687,308 @@ void UPJLinkDiscoveryWidget::SetupMessageTimer()
                 false);
         }
     }
+}
+
+void UPJLinkDiscoveryWidget::PerformDeferredUIUpdate()
+{
+    // 대기 중인 UI 업데이트가 있고, 충분한 시간이 경과했는지 확인
+    if (bPendingUIUpdate)
+    {
+        // UI 업데이트 플래그 초기화
+        bPendingUIUpdate = false;
+
+        // 정렬 및 필터링된 결과로 UI 업데이트
+        PrepareResultsUpdate(GetFilteredAndSortedResults());
+
+        // 마지막 업데이트 시간 기록
+        LastUIUpdateTime = GetWorld()->GetTimeSeconds();
+    }
+}
+
+FString UPJLinkDiscoveryWidget::GetDiscoveryStateText() const
+{
+    switch (CurrentDiscoveryState)
+    {
+    case EPJLinkDiscoveryState::Idle:
+        return TEXT("대기 중");
+    case EPJLinkDiscoveryState::Searching:
+        return TEXT("검색 중...");
+    case EPJLinkDiscoveryState::Completed:
+        return TEXT("검색 완료");
+    case EPJLinkDiscoveryState::Cancelled:
+        return TEXT("검색 취소됨");
+    case EPJLinkDiscoveryState::Failed:
+        return TEXT("검색 실패");
+    default:
+        return TEXT("");
+    }
+}
+
+void UPJLinkDiscoveryWidget::SetDiscoveryState(EPJLinkDiscoveryState NewState)
+{
+    if (CurrentDiscoveryState != NewState)
+    {
+        CurrentDiscoveryState = NewState;
+
+        // 이벤트 호출
+        OnDiscoveryStateChanged(NewState);
+
+        // 상태에 따라 UI 요소 제어
+        switch (NewState)
+        {
+        case EPJLinkDiscoveryState::Searching:
+            // 검색 시작 - 애니메이션 시작
+            if (bEnableProgressAnimation)
+            {
+                StartProgressAnimation();
+            }
+            break;
+
+        case EPJLinkDiscoveryState::Completed:
+        case EPJLinkDiscoveryState::Cancelled:
+        case EPJLinkDiscoveryState::Failed:
+            // 검색 종료 - 애니메이션 중지
+            if (bEnableProgressAnimation)
+            {
+                StopProgressAnimation();
+            }
+            break;
+
+        default:
+            break;
+        }
+    }
+}
+
+void UPJLinkDiscoveryWidget::SetFilterOption(EPJLinkDiscoveryFilterOption FilterOption)
+{
+    if (CurrentFilterOption != FilterOption)
+    {
+        CurrentFilterOption = FilterOption;
+
+        // UI 즉시 업데이트
+        PrepareResultsUpdate(GetFilteredAndSortedResults());
+    }
+}
+
+TArray<FPJLinkDiscoveryResult> UPJLinkDiscoveryWidget::GetFilteredAndSortedResults() const
+{
+    // 원본 결과 복사
+    TArray<FPJLinkDiscoveryResult> FilteredResults = DiscoveryResults;
+
+    // 필터 적용
+    if (CurrentFilterOption != EPJLinkDiscoveryFilterOption::All)
+    {
+        TArray<FPJLinkDiscoveryResult> TempResults;
+
+        for (const FPJLinkDiscoveryResult& Result : FilteredResults)
+        {
+            bool bShouldInclude = false;
+
+            switch (CurrentFilterOption)
+            {
+            case EPJLinkDiscoveryFilterOption::RequiresAuth:
+                bShouldInclude = Result.bRequiresAuthentication;
+                break;
+            case EPJLinkDiscoveryFilterOption::NoAuth:
+                bShouldInclude = !Result.bRequiresAuthentication;
+                break;
+            case EPJLinkDiscoveryFilterOption::Class1:
+                bShouldInclude = (Result.DeviceClass == EPJLinkClass::Class1);
+                break;
+            case EPJLinkDiscoveryFilterOption::Class2:
+                bShouldInclude = (Result.DeviceClass == EPJLinkClass::Class2);
+                break;
+            default:
+                bShouldInclude = true;
+                break;
+            }
+
+            if (bShouldInclude)
+            {
+                TempResults.Add(Result);
+            }
+        }
+
+        FilteredResults = TempResults;
+    }
+
+    // 텍스트 필터 적용 (이미 구현된 경우 유지)
+    if (!FilterText.IsEmpty())
+    {
+        TArray<FPJLinkDiscoveryResult> TempResults;
+
+        for (const FPJLinkDiscoveryResult& Result : FilteredResults)
+        {
+            // IP 주소, 이름, 모델명 중 하나라도 필터 텍스트를 포함하면 표시
+            if (Result.IPAddress.Contains(FilterText) ||
+                Result.Name.Contains(FilterText) ||
+                Result.ModelName.Contains(FilterText))
+            {
+                TempResults.Add(Result);
+            }
+        }
+
+        FilteredResults = TempResults;
+    }
+
+    // 정렬 적용
+    switch (CurrentSortOption)
+    {
+    case EPJLinkDiscoverySortOption::ByIPAddress:
+        // IP 주소 기준 정렬
+        FilteredResults.Sort([](const FPJLinkDiscoveryResult& A, const FPJLinkDiscoveryResult& B) {
+            return A.IPAddress < B.IPAddress;
+            });
+        break;
+
+    case EPJLinkDiscoverySortOption::ByName:
+        // 이름 기준 정렬 (이름이 없으면 IP 주소 사용)
+        FilteredResults.Sort([](const FPJLinkDiscoveryResult& A, const FPJLinkDiscoveryResult& B) {
+            const FString& NameA = A.Name.IsEmpty() ? A.IPAddress : A.Name;
+            const FString& NameB = B.Name.IsEmpty() ? B.IPAddress : B.Name;
+            return NameA < NameB;
+            });
+        break;
+
+    case EPJLinkDiscoverySortOption::ByResponseTime:
+        // 응답 시간 기준 정렬 (빠른 순)
+        FilteredResults.Sort([](const FPJLinkDiscoveryResult& A, const FPJLinkDiscoveryResult& B) {
+            return A.ResponseTimeMs < B.ResponseTimeMs;
+            });
+        break;
+
+    case EPJLinkDiscoverySortOption::ByModelName:
+        // 모델명 기준 정렬
+        FilteredResults.Sort([](const FPJLinkDiscoveryResult& A, const FPJLinkDiscoveryResult& B) {
+            return A.ModelName < B.ModelName;
+            });
+        break;
+
+    case EPJLinkDiscoverySortOption::ByDiscoveryTime:
+        // 발견 시간 기준 정렬 (최신 순)
+        FilteredResults.Sort([](const FPJLinkDiscoveryResult& A, const FPJLinkDiscoveryResult& B) {
+            return A.DiscoveryTime > B.DiscoveryTime;
+            });
+        break;
+
+    default:
+        break;
+    }
+
+    return FilteredResults;
+}
+
+void UPJLinkDiscoveryWidget::SelectDevice(int32 DeviceIndex)
+{
+    // 유효한 인덱스인지 확인
+    TArray<FPJLinkDiscoveryResult> Results = GetFilteredAndSortedResults();
+    if (Results.IsValidIndex(DeviceIndex))
+    {
+        SelectedDeviceIndex = DeviceIndex;
+
+        // 세부 정보 패널 업데이트
+        UpdateDetailPanel(Results[DeviceIndex]);
+    }
+    else
+    {
+        SelectedDeviceIndex = -1;
+    }
+}
+
+FString UPJLinkDiscoveryWidget::GetResultSummaryText() const
+{
+    TArray<FPJLinkDiscoveryResult> FilteredResults = GetFilteredAndSortedResults();
+    int32 TotalCount = DiscoveryResults.Num();
+    int32 FilteredCount = FilteredResults.Num();
+
+    if (CurrentDiscoveryState == EPJLinkDiscoveryState::Searching)
+    {
+        return FString::Printf(TEXT("검색 중... %d개 장치 발견"), TotalCount);
+    }
+    else if (TotalCount == 0)
+    {
+        return TEXT("발견된 장치 없음");
+    }
+    else if (TotalCount == FilteredCount)
+    {
+        return FString::Printf(TEXT("장치 %d개 발견"), TotalCount);
+    }
+    else
+    {
+        return FString::Printf(TEXT("장치 %d개 중 %d개 표시 중"), TotalCount, FilteredCount);
+    }
+}
+
+FLinearColor UPJLinkDiscoveryWidget::GetResultSummaryColor() const
+{
+    int32 ResultCount = GetFilteredAndSortedResults().Num();
+
+    if (CurrentDiscoveryState == EPJLinkDiscoveryState::Searching)
+    {
+        // 검색 중 - 파란색
+        return FLinearColor(0.2f, 0.4f, 1.0f, 1.0f);
+    }
+    else if (ResultCount == 0)
+    {
+        // 결과 없음 - 회색
+        return FLinearColor(0.5f, 0.5f, 0.5f, 1.0f);
+    }
+    else
+    {
+        // 결과 있음 - 녹색
+        return FLinearColor(0.2f, 0.8f, 0.2f, 1.0f);
+    }
+}
+
+FString UPJLinkDiscoveryWidget::GetDeviceStatusText(const FPJLinkDiscoveryResult& Result) const
+{
+    // 장치 클래스 표시
+    FString ClassText = (Result.DeviceClass == EPJLinkClass::Class1) ? TEXT("Class 1") : TEXT("Class 2");
+
+    // 인증 요구 여부 표시
+    FString AuthText = Result.bRequiresAuthentication ? TEXT("인증 필요") : TEXT("인증 불필요");
+
+    // 응답 시간 표시
+    FString ResponseText = FString::Printf(TEXT("%dms"), Result.ResponseTimeMs);
+
+    return FString::Printf(TEXT("%s, %s, %s"), *ClassText, *AuthText, *ResponseText);
+}
+
+FLinearColor UPJLinkDiscoveryWidget::GetDeviceStatusColor(const FPJLinkDiscoveryResult& Result) const
+{
+    // 인증 여부에 따른 색상 변경
+    if (Result.bRequiresAuthentication)
+    {
+        // 인증 필요 - 노란색
+        return FLinearColor(1.0f, 0.8f, 0.2f, 1.0f);
+    }
+    else
+    {
+        // 인증 불필요 - 녹색
+        return FLinearColor(0.2f, 0.8f, 0.2f, 1.0f);
+    }
+}
+
+// 결과 목록을 업데이트하기 전에 호출하는 함수 추가
+void UPJLinkDiscoveryWidget::PrepareResultsUpdate(const TArray<FPJLinkDiscoveryResult>& Results)
+{
+    // 결과가 없는 경우 처리
+    bool bIsSearching = CurrentDiscoveryState == EPJLinkDiscoveryState::Searching;
+    bool bHasFilters = !FilterText.IsEmpty() || CurrentFilterOption != EPJLinkDiscoveryFilterOption::All;
+
+    if (Results.Num() == 0)
+    {
+        // 결과 없음 메시지 표시
+        ShowNoResultsMessage(bIsSearching, bHasFilters);
+    }
+
+    // 선택된 장치가 더 이상 결과에 없는 경우, 선택 해제
+    if (!Results.IsValidIndex(SelectedDeviceIndex))
+    {
+        SelectedDeviceIndex = -1;
+    }
+
+    // 블루프린트에 구현된 UpdateResultsList 호출
+    UpdateResultsList(Results);
 }

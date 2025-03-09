@@ -25,19 +25,53 @@ public:
         , EndIP(InEndIP)
         , TimeoutSeconds(InTimeoutSeconds)
     {
+        bIsCancelled.store(false, std::memory_order_release);
     }
 
     void DoWork()
     {
         if (Manager)
         {
-            Manager->PerformRangeScan(DiscoveryID, StartIP, EndIP, TimeoutSeconds);
+            Manager->PerformRangeScan(DiscoveryID, StartIP, EndIP, TimeoutSeconds, &bIsCancelled);
         }
+    }
+
+    void Cancel()
+    {
+        bIsCancelled.store(true, std::memory_order_release);
+    }
+
+    bool IsCancelled() const
+    {
+        return bIsCancelled.load(std::memory_order_acquire);
     }
 
     FORCEINLINE TStatId GetStatId() const
     {
         RETURN_QUICK_DECLARE_CYCLE_STAT(FScanWorker, STATGROUP_ThreadPoolAsyncTasks);
+    }
+
+    FORCEINLINE TStatId GetStatId() const
+    {
+        RETURN_QUICK_DECLARE_CYCLE_STAT(FScanWorker, STATGROUP_ThreadPoolAsyncTasks);
+    }
+
+    // 생성자에서 플래그 초기화 추가
+    FScanWorker(...) : ... {
+        bIsCancelled.store(false, std::memory_order_release);
+    }
+
+    // 취소 메서드 추가
+    void Cancel() {
+        bIsCancelled.store(true, std::memory_order_release);
+    }
+
+    // DoWork 메서드 수정
+    void DoWork() {
+        if (Manager) {
+            // 정기적으로 취소 플래그 확인 추가
+            Manager->PerformRangeScan(DiscoveryID, StartIP, EndIP, TimeoutSeconds, &bIsCancelled);
+        }
     }
 
 private:
@@ -46,6 +80,11 @@ private:
     uint32 StartIP;
     uint32 EndIP;
     float TimeoutSeconds;
+    TAtomic<bool> bIsCancelled;
+
+    // 작업 취소 플래그
+    TAtomic<bool> bIsCancelled;
+
 };
 
 UPJLinkDiscoveryManager::UPJLinkDiscoveryManager()
@@ -57,8 +96,12 @@ UPJLinkDiscoveryManager::UPJLinkDiscoveryManager()
 {
 }
 
+// PJLinkDiscoveryManager.cpp
+// ~UPJLinkDiscoveryManager 소멸자 전체 구현
+
 UPJLinkDiscoveryManager::~UPJLinkDiscoveryManager()
 {
+    // 모든 검색 작업 취소 (CancelAllDiscoveries 호출)
     CancelAllDiscoveries();
 
     // 소켓 정리
@@ -72,6 +115,66 @@ UPJLinkDiscoveryManager::~UPJLinkDiscoveryManager()
         }
         BroadcastSocket = nullptr;
     }
+
+    // 혹시 남아있을 수 있는 활성 작업 정리
+    {
+        FScopeLock Lock(&DiscoveryLock);
+
+        // 작업 포인터 수집 (임계 영역 내에서)
+        TArray<FAutoDeleteAsyncTask<FScanWorker>*> RemainingTasks;
+        ActiveScanTasks.GenerateValueArray(RemainingTasks);
+
+        // 작업 취소 및 삭제 준비 (맵 비우기)
+        ActiveScanTasks.Empty();
+
+        // 임계 영역 밖에서 작업 취소 및 정리
+        Lock.Unlock();
+
+        for (auto* Task : RemainingTasks)
+        {
+            if (Task)
+            {
+                // 작업 취소 플래그 설정
+                FScanWorker* ScanWorker = static_cast<FScanWorker*>(Task->GetTask());
+                if (ScanWorker)
+                {
+                    ScanWorker->Cancel();
+                }
+
+                // 일반적으로 작업은 자체 삭제되지만 소멸자에서는 명시적으로 삭제
+                // 이렇게 하면 자원 누수를 방지할 수 있습니다
+                delete Task;
+            }
+        }
+    }
+
+    // 타이머 명시적 정리
+    TArray<FTimerHandle> RemainingTimers;
+    {
+        FScopeLock Lock(&DiscoveryLock);
+
+        // 타이머 핸들 수집
+        for (const auto& Pair : DiscoveryTimerHandles)
+        {
+            RemainingTimers.Add(Pair.Value);
+        }
+
+        // 타이머 맵 비우기
+        DiscoveryTimerHandles.Empty();
+    }
+
+    // World가 유효한 동안 타이머 정리
+    UWorld* World = GEngine ? GEngine->GetWorldFromContextObject(GetOuter(), EGetWorldErrorMode::LogAndReturnNull) : nullptr;
+    if (World)
+    {
+        for (const auto& TimerHandle : RemainingTimers)
+        {
+            World->GetTimerManager().ClearTimer(TimerHandle);
+        }
+    }
+
+    // 소멸 전 진단 로그
+    PJLINK_LOG_INFO(TEXT("PJLink Discovery Manager destroyed"));
 }
 
 void UPJLinkDiscoveryManager::BeginDestroy()
@@ -82,6 +185,9 @@ void UPJLinkDiscoveryManager::BeginDestroy()
 
 FString UPJLinkDiscoveryManager::StartBroadcastDiscovery(float TimeoutSeconds)
 {
+    PJLINK_CAPTURE_DIAGNOSTIC(DiscoveryDiagnosticData,
+        TEXT("Starting broadcast discovery with timeout %.1f seconds"), TimeoutSeconds);
+
     // 검색 ID 생성
     FString DiscoveryID = GenerateDiscoveryID();
 
@@ -104,8 +210,27 @@ FString UPJLinkDiscoveryManager::StartBroadcastDiscovery(float TimeoutSeconds)
     if (!SetupBroadcastSocket())
     {
         PJLINK_LOG_ERROR(TEXT("Failed to setup broadcast socket for discovery"));
-        CompleteDiscovery(DiscoveryID, false);
-        return DiscoveryID;
+
+        // 추가: 재시도 로직
+        static const int32 MaxRetries = 3;
+        for (int32 RetryCount = 0; RetryCount < MaxRetries; RetryCount++)
+        {
+            PJLINK_LOG_WARNING(TEXT("Retrying broadcast socket setup (%d/%d)..."), RetryCount + 1, MaxRetries);
+            // 잠시 대기 후 재시도
+            FPlatformProcess::Sleep(0.5f);
+            if (SetupBroadcastSocket())
+            {
+                PJLINK_LOG_INFO(TEXT("Broadcast socket setup successful on retry %d"), RetryCount + 1);
+                break;
+            }
+
+            // 마지막 시도에서도 실패하면 검색 종료
+            if (RetryCount == MaxRetries - 1)
+            {
+                CompleteDiscovery(DiscoveryID, false);
+                return DiscoveryID;
+            }
+        }
     }
 
     // 타이머 설정 (타임아웃 처리)
@@ -164,8 +289,28 @@ FString UPJLinkDiscoveryManager::StartRangeScan(const FString& StartIPAddress, c
         World->GetTimerManager().SetTimer(TimerHandle, TimerDelegate, ActualTimeout, false);
     }
 
-    // 범위 스캔 작업 시작
-    (new FAutoDeleteAsyncTask<FScanWorker>(this, DiscoveryID, StartIP, EndIP, ActualTimeout))->StartBackgroundTask();
+    // 범위 스캔 작업 생성
+    FAutoDeleteAsyncTask<FScanWorker>* ScanTask = new FAutoDeleteAsyncTask<FScanWorker>(
+        this, DiscoveryID, StartIP, EndIP, ActualTimeout);
+
+    // 작업 저장 및 시작
+    {
+        FScopeLock Lock(&DiscoveryLock);
+        // 기존 작업이 있으면 제거
+        if (ActiveScanTasks.Contains(DiscoveryID))
+        {
+            // 기존 작업이 있는 경우 (비정상적인 상황)
+            PJLINK_LOG_WARNING(TEXT("Existing scan task found for discovery ID: %s - this should not happen"), *DiscoveryID);
+            delete ActiveScanTasks[DiscoveryID];
+            ActiveScanTasks.Remove(DiscoveryID);
+        }
+
+        // 새 작업 추가
+        ActiveScanTasks.Add(DiscoveryID, ScanTask);
+    }
+
+    // 백그라운드 작업 시작
+    ScanTask->StartBackgroundTask();
 
     PJLINK_LOG_INFO(TEXT("Started IP range scan with ID: %s, Range: %s - %s, Addresses: %d"),
         *DiscoveryID, *StartIPAddress, *EndIPAddress, NewStatus.TotalAddresses);
@@ -262,18 +407,63 @@ TArray<FPJLinkDiscoveryStatus> UPJLinkDiscoveryManager::GetAllDiscoveryStatuses(
 
 bool UPJLinkDiscoveryManager::CancelDiscovery(const FString& DiscoveryID)
 {
-    FScopeLock Lock(&DiscoveryLock);
+    // 활성 작업 포인터를 저장할 변수 (임계 영역 밖에서 사용하기 위함)
+    FAutoDeleteAsyncTask<FScanWorker>* TaskToCancel = nullptr;
 
-    if (!DiscoveryStatuses.Contains(DiscoveryID))
     {
-        return false;
+        FScopeLock Lock(&DiscoveryLock);
+
+        if (!DiscoveryStatuses.Contains(DiscoveryID))
+        {
+            // 검색 ID가 존재하지 않으면 취소 실패
+            PJLINK_LOG_WARNING(TEXT("Cannot cancel discovery: ID not found: %s"), *DiscoveryID);
+            return false;
+        }
+
+        // 상태 업데이트
+        FPJLinkDiscoveryStatus& Status = DiscoveryStatuses[DiscoveryID];
+
+        // 이미 완료된 작업인지 확인
+        if (Status.bIsComplete)
+        {
+            PJLINK_LOG_VERBOSE(TEXT("Discovery already complete, no need to cancel: %s"), *DiscoveryID);
+            return true; // 이미 완료된 작업은 성공적으로 취소된 것으로 간주
+        }
+
+        // 취소 상태로 표시
+        Status.bWasCancelled = true;
+        Status.bIsComplete = true;
+        Status.ElapsedTime = FDateTime::Now() - Status.StartTime;
+
+        // 진행률 100%로 설정 (UI 표시를 위해)
+        Status.ProgressPercentage = 100.0f;
+        Status.ScannedAddresses = Status.TotalAddresses;
+
+        // 활성 작업 찾기
+        if (ActiveScanTasks.Contains(DiscoveryID))
+        {
+            // 맵에서 작업 포인터를 가져오고 제거
+            TaskToCancel = ActiveScanTasks[DiscoveryID];
+            ActiveScanTasks.Remove(DiscoveryID);
+
+            PJLINK_LOG_VERBOSE(TEXT("Found active scan task to cancel for discovery: %s"), *DiscoveryID);
+        }
     }
 
-    // 상태 업데이트
-    FPJLinkDiscoveryStatus& Status = DiscoveryStatuses[DiscoveryID];
-    Status.bWasCancelled = true;
-    Status.bIsComplete = true;
-    Status.ElapsedTime = FDateTime::Now() - Status.StartTime;
+    // 임계 영역 밖에서 작업 취소 처리 (교착 상태 방지)
+    if (TaskToCancel)
+    {
+        // 작업의 FScanWorker 인스턴스에 접근
+        FScanWorker* ScanWorker = static_cast<FScanWorker*>(TaskToCancel->GetTask());
+        if (ScanWorker)
+        {
+            // Cancel 메서드 호출로 취소 플래그 설정
+            ScanWorker->Cancel();
+            PJLINK_LOG_INFO(TEXT("Cancelled active scan task for discovery: %s"), *DiscoveryID);
+        }
+
+        // 주의: TaskToCancel은 자체 삭제되므로 여기서 delete하지 않음
+    }
 
     // 타이머 정리
     if (DiscoveryTimerHandles.Contains(DiscoveryID))
@@ -285,6 +475,10 @@ bool UPJLinkDiscoveryManager::CancelDiscovery(const FString& DiscoveryID)
         DiscoveryTimerHandles.Remove(DiscoveryID);
     }
 
+    // 진단 정보 추가
+    PJLINK_CAPTURE_DIAGNOSTIC(DiscoveryDiagnosticData,
+        TEXT("Discovery %s cancelled by user"), *DiscoveryID);
+
     PJLINK_LOG_INFO(TEXT("Cancelled discovery: %s"), *DiscoveryID);
 
     return true;
@@ -292,27 +486,102 @@ bool UPJLinkDiscoveryManager::CancelDiscovery(const FString& DiscoveryID)
 
 void UPJLinkDiscoveryManager::CancelAllDiscoveries()
 {
-    FScopeLock Lock(&DiscoveryLock);
+    // 모든 활성 작업 포인터와 타이머 핸들을 수집할 변수 (임계 영역 밖에서 사용하기 위함)
+    TArray<FAutoDeleteAsyncTask<FScanWorker>*> TasksToCancel;
+    TArray<FString> DiscoveryIDs;
+    TArray<FTimerHandle> TimersToCancel;
 
-    // 모든 검색 작업 취소
-    for (auto& Pair : DiscoveryStatuses)
     {
-        Pair.Value.bWasCancelled = true;
-        Pair.Value.bIsComplete = true;
-        Pair.Value.ElapsedTime = FDateTime::Now() - Pair.Value.StartTime;
+        FScopeLock Lock(&DiscoveryLock);
+
+        // 모든 검색 작업 취소 표시
+        for (auto& Pair : DiscoveryStatuses)
+        {
+            // 이미 완료된 작업은 건너뜀
+            if (Pair.Value.bIsComplete)
+            {
+                continue;
+            }
+
+            Pair.Value.bWasCancelled = true;
+            Pair.Value.bIsComplete = true;
+            Pair.Value.ElapsedTime = FDateTime::Now() - Pair.Value.StartTime;
+
+            // 진행률 100%로 설정 (UI 표시를 위해)
+            Pair.Value.ProgressPercentage = 100.0f;
+            Pair.Value.ScannedAddresses = Pair.Value.TotalAddresses;
+
+            // 검색 ID 저장
+            DiscoveryIDs.Add(Pair.Key);
+        }
+
+        // 모든 활성 작업 수집
+        for (const auto& Pair : ActiveScanTasks)
+        {
+            if (Pair.Value) // null 체크
+            {
+                TasksToCancel.Add(Pair.Value);
+            }
+        }
+
+        // 활성 작업 맵 비우기
+        ActiveScanTasks.Empty();
+
+        // 타이머 핸들 수집
+        for (const auto& Pair : DiscoveryTimerHandles)
+        {
+            TimersToCancel.Add(Pair.Value);
+        }
+    }
+
+    // 임계 영역 밖에서 작업 취소 처리
+    int32 CancelledTaskCount = 0;
+    for (auto* Task : TasksToCancel)
+    {
+        if (!Task) continue; // 안전 검사
+
+        // 작업의 FScanWorker 인스턴스에 접근
+        FScanWorker* ScanWorker = static_cast<FScanWorker*>(Task->GetTask());
+        if (ScanWorker)
+        {
+            // Cancel 메서드 호출로 취소 플래그 설정
+            ScanWorker->Cancel();
+            CancelledTaskCount++;
+        }
+
+        // 주의: Task는 자체 삭제되므로 여기서 delete하지 않음
     }
 
     // 모든 타이머 정리
     if (UWorld* World = GEngine->GetWorldFromContextObject(GetOuter(), EGetWorldErrorMode::LogAndReturnNull))
     {
-        for (auto& Pair : DiscoveryTimerHandles)
+        for (const auto& TimerHandle : TimersToCancel)
         {
-            World->GetTimerManager().ClearTimer(Pair.Value);
+            World->GetTimerManager().ClearTimer(TimerHandle);
         }
     }
-    DiscoveryTimerHandles.Empty();
 
-    PJLINK_LOG_INFO(TEXT("Cancelled all discoveries"));
+    // 타이머 맵 비우기
+    {
+        FScopeLock Lock(&DiscoveryLock);
+        DiscoveryTimerHandles.Empty();
+    }
+
+    // 진단 정보 추가
+    PJLINK_CAPTURE_DIAGNOSTIC(DiscoveryDiagnosticData,
+        TEXT("All discoveries cancelled. Cancelled tasks: %d, Discovery IDs: %d"),
+        CancelledTaskCount, DiscoveryIDs.Num());
+
+    // 로그 출력
+    if (DiscoveryIDs.Num() > 0)
+    {
+        FString IDsStr = FString::Join(DiscoveryIDs, TEXT(", "));
+        PJLINK_LOG_INFO(TEXT("Cancelled all discoveries (%d): %s"), DiscoveryIDs.Num(), *IDsStr);
+    }
+    else
+    {
+        PJLINK_LOG_INFO(TEXT("No active discoveries to cancel"));
+    }
 }
 
 TArray<FPJLinkDiscoveryResult> UPJLinkDiscoveryManager::GetDiscoveryResults(const FString& DiscoveryID)
@@ -561,10 +830,34 @@ void UPJLinkDiscoveryManager::PerformBroadcastDiscovery(const FString& Discovery
         FTimerHandle CompletionTimerHandle;
         World->GetTimerManager().SetTimer(CompletionTimerHandle, CompletionDelegate, TimeoutSeconds, false);
     }
+
+    PJLINK_CAPTURE_DIAGNOSTIC(DiscoveryDiagnosticData,
+        TEXT("Broadcast sent to port %d, waiting for responses..."), BroadcastPort);
 }
 
-void UPJLinkDiscoveryManager::PerformRangeScan(const FString& DiscoveryID, uint32 StartIP, uint32 EndIP, float TimeoutSeconds)
+void UPJLinkDiscoveryManager::PerformRangeScan(const FString& DiscoveryID, uint32 StartIP, uint32 EndIP,
+    float TimeoutSeconds, TAtomic<bool>* CancellationFlag)
 {
+    // 함수 시작 부분에 취소 확인 헬퍼 함수 추가
+    auto CheckCancellation = [&]() -> bool {
+        // 직접 취소 플래그 확인
+        if (CancellationFlag && CancellationFlag->load(std::memory_order_acquire)) {
+            PJLINK_LOG_VERBOSE(TEXT("Range scan cancelled via external flag for discovery: %s"), *DiscoveryID);
+            return true;
+        }
+
+        // 기존 취소 확인 로직
+        FScopeLock Lock(&DiscoveryLock);
+        bool bCancelled = DiscoveryStatuses.Contains(DiscoveryID) &&
+            (DiscoveryStatuses[DiscoveryID].bIsComplete || DiscoveryStatuses[DiscoveryID].bWasCancelled);
+
+        if (bCancelled) {
+            PJLINK_LOG_VERBOSE(TEXT("Range scan cancelled via status flag for discovery: %s"), *DiscoveryID);
+        }
+
+        return bCancelled;
+        };
+
     // 최대 IP 숫자 제한 (너무 큰 범위는 분할 처리)
     const uint32 MaxIPsPerBatch = 255;
 
@@ -576,6 +869,11 @@ void UPJLinkDiscoveryManager::PerformRangeScan(const FString& DiscoveryID, uint3
 
         for (uint32 i = 0; i < BatchCount; i++)
         {
+            // 취소 확인
+            if (CheckCancellation()) {
+                return;
+            }
+
             uint32 CurrentEndIP = FMath::Min(CurrentStartIP + MaxIPsPerBatch - 1, EndIP);
 
             // 부분 범위 스캔 작업 생성
@@ -590,14 +888,9 @@ void UPJLinkDiscoveryManager::PerformRangeScan(const FString& DiscoveryID, uint3
             {
                 ScanIPAddress(DiscoveryID, IPAddress, TimeoutSeconds);
 
-                // 작업 중단 여부 확인
-                {
-                    FScopeLock Lock(&DiscoveryLock);
-                    if (DiscoveryStatuses.Contains(DiscoveryID) &&
-                        (DiscoveryStatuses[DiscoveryID].bIsComplete || DiscoveryStatuses[DiscoveryID].bWasCancelled))
-                    {
-                        return;
-                    }
+                // 취소 확인
+                if (CheckCancellation()) {
+                    return;
                 }
 
                 // IP 스캔 간 대기 (네트워크 부하 방지)
@@ -621,14 +914,9 @@ void UPJLinkDiscoveryManager::PerformRangeScan(const FString& DiscoveryID, uint3
         {
             ScanIPAddress(DiscoveryID, IPAddress, TimeoutSeconds);
 
-            // 작업 중단 여부 확인
-            {
-                FScopeLock Lock(&DiscoveryLock);
-                if (DiscoveryStatuses.Contains(DiscoveryID) &&
-                    (DiscoveryStatuses[DiscoveryID].bIsComplete || DiscoveryStatuses[DiscoveryID].bWasCancelled))
-                {
-                    return;
-                }
+            // 취소 확인
+            if (CheckCancellation()) {
+                return;
             }
 
             // IP 스캔 간 대기 (네트워크 부하 방지)
@@ -636,8 +924,21 @@ void UPJLinkDiscoveryManager::PerformRangeScan(const FString& DiscoveryID, uint3
         }
     }
 
-    // 스캔 완료 처리
-    CompleteDiscovery(DiscoveryID, true);
+    // 스캔 완료 처리 전에 한 번 더 확인
+    if (CheckCancellation()) {
+        return;
+    }
+
+    // 스캔 완료 처리 - 취소되지 않은 경우에만 완료 처리
+    FScopeLock Lock(&DiscoveryLock);
+    if (DiscoveryStatuses.Contains(DiscoveryID) &&
+        !DiscoveryStatuses[DiscoveryID].bIsComplete &&
+        !DiscoveryStatuses[DiscoveryID].bWasCancelled)
+    {
+        // 락 외부에서 호출하기 위해 락 해제 후 호출
+        Lock.Unlock();
+        CompleteDiscovery(DiscoveryID, true);
+    }
 }
 
 void UPJLinkDiscoveryManager::PerformSubnetScan(const FString& DiscoveryID, uint32 NetworkAddress, uint32 SubnetMask, float TimeoutSeconds)
@@ -651,8 +952,26 @@ void UPJLinkDiscoveryManager::PerformSubnetScan(const FString& DiscoveryID, uint
     // 마지막 호스트 주소 (브로드캐스트 주소 - 1)
     uint32 LastHostIP = NetworkAddress + HostBits - 1;
 
-    // 범위 스캔 수행
-    PerformRangeScan(DiscoveryID, FirstHostIP, LastHostIP, TimeoutSeconds);
+    // 서브넷 스캔 작업 생성
+    FAutoDeleteAsyncTask<FScanWorker>* ScanTask = new FAutoDeleteAsyncTask<FScanWorker>(
+        this, DiscoveryID, NetworkAddress + 1, NetworkAddress + AddressCount, ActualTimeout);
+
+    // 작업 저장 및 시작
+    {
+        FScopeLock Lock(&DiscoveryLock);
+        // 기존 작업이 있으면 제거
+        if (ActiveScanTasks.Contains(DiscoveryID))
+        {
+            delete ActiveScanTasks[DiscoveryID];
+            ActiveScanTasks.Remove(DiscoveryID);
+        }
+
+        // 새 작업 추가
+        ActiveScanTasks.Add(DiscoveryID, ScanTask);
+    }
+
+    // 백그라운드 작업 시작
+    ScanTask->StartBackgroundTask();
 }
 
 void UPJLinkDiscoveryManager::ScanIPAddress(const FString& DiscoveryID, const FString& IPAddress, float TimeoutSeconds)
@@ -682,6 +1001,12 @@ void UPJLinkDiscoveryManager::ScanIPAddress(const FString& DiscoveryID, const FS
         PJLINK_LOG_ERROR(TEXT("Failed to create TCP socket for scanning"));
         return;
     }
+
+    // 소켓 타임아웃 설정 강화
+    FTimespan ConnectionTimeout = FTimespan::FromSeconds(TimeoutSeconds);
+    Socket->SetReceiveTimeout(ConnectionTimeout);
+    Socket->SetSendTimeout(ConnectionTimeout);
+    Socket->SetConnectionTimeout(ConnectionTimeout);
 
     // 연결 타임아웃 설정
     Socket->SetNonBlocking(true);
@@ -788,11 +1113,17 @@ void UPJLinkDiscoveryManager::ScanIPAddress(const FString& DiscoveryID, const FS
 void UPJLinkDiscoveryManager::ProcessDiscoveryResponse(const FString& DiscoveryID, const FString& IPAddress,
     const FString& Response, int32 ResponseTimeMs)
 {
-    // PJLink 응답인지 확인
+    // PJLink 응답인지 확인 및 로깅 추가
     if (!Response.StartsWith(TEXT("%")) || Response.Len() < 7)
     {
+        PJLINK_LOG_VERBOSE(TEXT("Received invalid response from %s: '%s' (not a PJLink response)"),
+            *IPAddress, *Response);
         return;
     }
+
+    // 로그 추가
+    PJLINK_LOG_VERBOSE(TEXT("Processing valid PJLink response from %s: '%s'"),
+        *IPAddress, *Response);
 
     // 검색 결과 생성
     FPJLinkDiscoveryResult Result;
@@ -904,6 +1235,10 @@ void UPJLinkDiscoveryManager::CompleteDiscovery(const FString& DiscoveryID, bool
     }
 
     PJLINK_LOG_INFO(TEXT("Discovery completed: %s, Success: %s, Devices found: %d"),
+        *DiscoveryID, bSuccess ? TEXT("True") : TEXT("False"), Results.Num());
+
+    PJLINK_CAPTURE_DIAGNOSTIC(DiscoveryDiagnosticData,
+        TEXT("Discovery %s completed: Success=%s, Devices=%d"),
         *DiscoveryID, bSuccess ? TEXT("True") : TEXT("False"), Results.Num());
 }
 

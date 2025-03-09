@@ -5,6 +5,15 @@
 #include "Blueprint/UserWidget.h"
 #include "PJLinkDiscoveryManager.h"
 #include "PJLinkTypes.h"
+
+UENUM(BlueprintType)
+enum class EPJLinkDiscoverySortOption : uint8
+{
+    ByIPAddress UMETA(DisplayName = "IP 주소순"),
+    ByName UMETA(DisplayName = "이름순"),
+    ByResponseTime UMETA(DisplayName = "응답시간순")
+};
+
 #include "PJLinkDiscoveryWidget.generated.h"
 
 /**
@@ -69,6 +78,29 @@ public:
     UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery")
     void SaveAllResultsAsGroup(const FString& GroupName);
 
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery")
+    void SetSortOption(EPJLinkDiscoverySortOption SortOption);
+
+    // 필터 텍스트 설정
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery")
+    void SetFilterText(const FString& InFilterText);
+
+    // 정렬 옵션 설정
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery")
+    void SetSortOption(EPJLinkDiscoverySortOption SortOption);
+
+    // 필터 텍스트 설정
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery")
+    void SetFilterText(const FString& InFilterText);
+
+    // 정렬된/필터링된 결과 가져오기
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery")
+    TArray<FPJLinkDiscoveryResult> GetFilteredAndSortedResults() const;
+
+    // 유효한 검색 결과인지 확인
+    UFUNCTION(BlueprintPure, Category = "PJLink|Discovery")
+    bool HasValidResults() const;
+
 protected:
     /**
      * 검색 완료 이벤트 처리
@@ -106,6 +138,9 @@ protected:
     UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery")
     void UpdateStatusText(const FString& StatusText);
 
+
+
+
 private:
     /**
      * 검색 매니저 생성
@@ -127,4 +162,11 @@ private:
     // 검색 결과
     UPROPERTY()
     TArray<FPJLinkDiscoveryResult> DiscoveryResults;
+
+    UPROPERTY()
+    EPJLinkDiscoverySortOption CurrentSortOption = EPJLinkDiscoverySortOption::ByIPAddress;
+
+    // 필터 텍스트
+    UPROPERTY()
+    FString FilterText;
 };

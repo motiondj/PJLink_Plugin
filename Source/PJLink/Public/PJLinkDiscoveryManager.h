@@ -241,6 +241,9 @@ public:
     UPROPERTY(BlueprintAssignable, Category = "PJLink|Discovery|Events")
     FPJLinkDiscoveryProgressDelegate OnDiscoveryProgress;
 
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery|Diagnostic")
+    FPJLinkDiagnosticData GetDiscoveryDiagnosticData() const { return DiscoveryDiagnosticData; }
+
 private:
     // 브로드캐스트 준비
     bool SetupBroadcastSocket();
@@ -249,7 +252,8 @@ private:
     void PerformBroadcastDiscovery(const FString& DiscoveryID, float TimeoutSeconds);
 
     // IP 범위 스캔 수행
-    void PerformRangeScan(const FString& DiscoveryID, uint32 StartIP, uint32 EndIP, float TimeoutSeconds);
+    void PerformRangeScan(const FString& DiscoveryID, uint32 StartIP, uint32 EndIP, float TimeoutSeconds,
+        TAtomic<bool>* CancellationFlag = nullptr);
 
     // 서브넷 스캔 수행
     void PerformSubnetScan(const FString& DiscoveryID, uint32 NetworkAddress, uint32 SubnetMask, float TimeoutSeconds);
@@ -308,4 +312,10 @@ private:
 
     // 검색 스레드 관리
     TArray<class FRunnableThread*> ScanThreads;
+
+    // 진단 데이터
+    FPJLinkDiagnosticData DiscoveryDiagnosticData;
+
+    // 활성 스캔 작업 추적을 위한 맵
+    TMap<FString, class FAutoDeleteAsyncTask<FScanWorker>*> ActiveScanTasks;
 };

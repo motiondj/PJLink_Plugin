@@ -28,6 +28,17 @@ void UPJLinkDiscoveryWidget::NativeConstruct()
     SetDiscoveryState(EPJLinkDiscoveryState::Idle);
 
     CreateDiscoveryManager();
+
+    // 애니메이션 관련 초기화
+    AnimationTime = 0.0f;
+    DeviceFoundEffectTime = 0.0f;
+    LastDiscoveredDeviceIndex = -1;
+
+    // UI 업데이트 주기 설정 (애니메이션을 위해 적절한 주기 필요)
+    UIUpdateInterval = FMath::Min(UIUpdateInterval, 0.25f); // 최대 4fps로 UI 업데이트 제한
+
+    // Tick 활성화 (애니메이션을 위해 필요)
+    SetIsEnabled(true);
 }
 
 void UPJLinkDiscoveryWidget::NativeDestruct()
@@ -332,6 +343,7 @@ void UPJLinkDiscoveryWidget::OnDiscoveryCompleted(const TArray<FPJLinkDiscoveryR
     }
 }
 
+// PJLinkDiscoveryWidget.cpp 파일에서 OnDeviceDiscovered 함수를 찾아 수정
 void UPJLinkDiscoveryWidget::OnDeviceDiscovered(const FPJLinkDiscoveryResult& DiscoveredDevice)
 {
     // 이미 같은 장치가 있는지 확인
@@ -351,6 +363,15 @@ void UPJLinkDiscoveryWidget::OnDeviceDiscovered(const FPJLinkDiscoveryResult& Di
         // 결과 추가
         DiscoveryResults.Add(DiscoveredDevice);
 
+        // 발견된 장치 인덱스 기록 (애니메이션을 위해)
+        LastDiscoveredDeviceIndex = DiscoveryResults.Num() - 1;
+
+        // 장치 발견 시 애니메이션 효과 재생
+        if (bEnableAdvancedAnimations)
+        {
+            PlayDeviceFoundEffect(LastDiscoveredDeviceIndex);
+        }
+
         // 장치 발견 메시지 표시 - 이름이 있으면 이름과 IP, 없으면 IP만 표시
         FString DeviceName = DiscoveredDevice.Name.IsEmpty() ? DiscoveredDevice.IPAddress :
             FString::Printf(TEXT("%s (%s)"), *DiscoveredDevice.Name, *DiscoveredDevice.IPAddress);
@@ -361,6 +382,9 @@ void UPJLinkDiscoveryWidget::OnDeviceDiscovered(const FPJLinkDiscoveryResult& Di
         if (bEnableProgressAnimation)
         {
             UpdateProgressAnimation(DiscoveryResults.Num() * 5.0f); // 장치 발견 시 애니메이션 속도 증가
+
+            // 애니메이션 속도 계수 업데이트
+            AnimationSpeedMultiplier = FMath::Min(3.0f, 1.0f + (DiscoveryResults.Num() * 0.1f));
         }
 
         // UI 업데이트 최적화 - 너무 자주 업데이트하지 않도록 조절
@@ -832,6 +856,7 @@ FString UPJLinkDiscoveryWidget::GetDiscoveryStateText() const
     }
 }
 
+// PJLinkDiscoveryWidget.cpp 파일의 SetDiscoveryState 함수 수정
 void UPJLinkDiscoveryWidget::SetDiscoveryState(EPJLinkDiscoveryState NewState)
 {
     if (CurrentDiscoveryState != NewState)
@@ -850,15 +875,43 @@ void UPJLinkDiscoveryWidget::SetDiscoveryState(EPJLinkDiscoveryState NewState)
             {
                 StartProgressAnimation();
             }
+
+            // 검색 버튼 애니메이션 재생
+            if (bEnableAdvancedAnimations)
+            {
+                PlaySearchButtonAnimation(true);
+                AnimationTime = 0.0f; // 애니메이션 시간 리셋
+            }
             break;
 
         case EPJLinkDiscoveryState::Completed:
+            // 검색 완료 - 애니메이션 중지
+            if (bEnableProgressAnimation)
+            {
+                StopProgressAnimation();
+            }
+
+            // 완료 애니메이션 재생
+            if (bEnableAdvancedAnimations)
+            {
+                PlaySearchButtonAnimation(false);
+                PlayCompletionAnimation(true, DiscoveryResults.Num());
+            }
+            break;
+
         case EPJLinkDiscoveryState::Cancelled:
         case EPJLinkDiscoveryState::Failed:
             // 검색 종료 - 애니메이션 중지
             if (bEnableProgressAnimation)
             {
                 StopProgressAnimation();
+            }
+
+            // 실패/취소 애니메이션 재생
+            if (bEnableAdvancedAnimations)
+            {
+                PlaySearchButtonAnimation(false);
+                PlayCompletionAnimation(false, DiscoveryResults.Num());
             }
             break;
 
@@ -1099,4 +1152,40 @@ void UPJLinkDiscoveryWidget::PrepareResultsUpdate(const TArray<FPJLinkDiscoveryR
 
     // 블루프린트에 구현된 UpdateResultsList 호출
     UpdateResultsList(Results);
+}
+
+// PJLinkDiscoveryWidget.cpp 파일에 추가
+void UPJLinkDiscoveryWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+    Super::NativeTick(MyGeometry, InDeltaTime);
+
+    // 애니메이션 시간 업데이트
+    AnimationTime += InDeltaTime;
+
+    // 검색 중일 때만 애니메이션 업데이트
+    if (CurrentDiscoveryState == EPJLinkDiscoveryState::Searching && bEnableAdvancedAnimations)
+    {
+        // 검색 중 애니메이션 업데이트
+        UpdateProgressAnimation(AnimationTime * AnimationSpeedMultiplier);
+    }
+
+    // 장치 발견 효과 타이머 업데이트
+    if (DeviceFoundEffectTime > 0.0f)
+    {
+        DeviceFoundEffectTime -= InDeltaTime;
+        if (DeviceFoundEffectTime <= 0.0f)
+        {
+            DeviceFoundEffectTime = 0.0f;
+            // 효과 종료 처리
+        }
+    }
+}
+
+void UPJLinkDiscoveryWidget::UpdateCurrentScanAddress_Implementation(const FString& CurrentAddress)
+{
+    // 기본 구현 (여기서는 현재 스캔 중인 IP 주소를 저장하고 화면에 표시)
+    CurrentScanAddress = CurrentAddress;
+
+    // 추가 애니메이션 효과를 위한 블루프린트 구현이 있을 수 있음
+    // 블루프린트에서 이 함수를 오버라이드하여 추가 시각적 효과 구현 가능
 }

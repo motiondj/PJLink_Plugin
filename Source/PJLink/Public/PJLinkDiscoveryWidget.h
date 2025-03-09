@@ -186,6 +186,45 @@ public:
     UPROPERTY(BlueprintReadOnly, Category = "PJLink|Discovery|UI")
     EPJLinkDiscoveryState CurrentDiscoveryState = EPJLinkDiscoveryState::Idle;
 
+    // 애니메이션 관련 확장 속성
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery|Animation")
+    bool bEnableAdvancedAnimations = true;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery|Animation", meta = (EditCondition = "bEnableAdvancedAnimations"))
+    float RotationAnimationSpeed = 1.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery|Animation", meta = (EditCondition = "bEnableAdvancedAnimations"))
+    float PulseAnimationSpeed = 1.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery|Animation", meta = (EditCondition = "bEnableAdvancedAnimations"))
+    FLinearColor ScanningColor = FLinearColor(0.2f, 0.5f, 1.0f, 1.0f);
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery|Animation", meta = (EditCondition = "bEnableAdvancedAnimations"))
+    FLinearColor DeviceFoundColor = FLinearColor(0.2f, 0.8f, 0.2f, 1.0f);
+
+    // 장치 발견 시 시각적 효과를 위한 속성
+    UPROPERTY(BlueprintReadOnly, Category = "PJLink|Discovery|Animation")
+    int32 LastDiscoveredDeviceIndex = -1;
+
+    UPROPERTY(BlueprintReadOnly, Category = "PJLink|Discovery|Animation")
+    float DeviceFoundEffectTime = 0.0f;
+
+    // 애니메이션 상태 추적 속성
+    UPROPERTY(BlueprintReadOnly, Category = "PJLink|Discovery|Animation")
+    float AnimationTime = 0.0f;
+
+    // 검색 버튼 애니메이션 관련 이벤트
+    UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery|Animation")
+    void PlaySearchButtonAnimation(bool bIsStarting);
+
+    // 장치 발견 시 애니메이션 효과
+    UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery|Animation")
+    void PlayDeviceFoundEffect(int32 DeviceIndex);
+
+    // 검색 완료 애니메이션
+    UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery|Animation")
+    void PlayCompletionAnimation(bool bSuccessful, int32 DeviceCount);
+
     // 검색 상태 변경 이벤트
     UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery|Events")
     void OnDiscoveryStateChanged(EPJLinkDiscoveryState NewState);
@@ -221,6 +260,9 @@ public:
     // 장치 상태 색상 가져오기
     UFUNCTION(BlueprintPure, Category = "PJLink|Discovery|UI")
     FLinearColor GetDeviceStatusColor(const FPJLinkDiscoveryResult& Result) const;
+
+    // 애니메이션 업데이트를 위한 Tick 함수
+    virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
 protected:
     /**

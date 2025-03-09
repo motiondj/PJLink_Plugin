@@ -14,7 +14,6 @@ class FRunnableThread;
 // 네트워크 응답 대리자
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FPJLinkResponseDelegate, EPJLinkCommand, Command, EPJLinkResponseStatus, Status, const FString&, Response);
 
-
 // 명령 추적을 위한 구조체
 struct FPJLinkCommandInfo
 {
@@ -24,11 +23,6 @@ struct FPJLinkCommandInfo
     float TimeoutSeconds;
     bool bResponseReceived;
 };
-
-
-// 타임아웃 처리 함수
-void HandleCommandTimeout(EPJLinkCommand Command);
-bool SendCommandWithTimeout(EPJLinkCommand Command, const FString& Parameter = TEXT(""), float TimeoutSeconds = 5.0f);
 
 /**
  * PJLink 네트워크 통신을 관리하는 클래스
@@ -232,18 +226,6 @@ private:
     // 큐 처리 함수
     void ProcessResponseQueue();
 
-    // 명령 이름 가져오기
-    FString GetCommandName(EPJLinkCommand Command) const;
-
-    // 소켓 작업 동기화를 위한 임계 영역
-    FCriticalSection SocketCriticalSection;
-
-    // 프로젝터 정보 동기화를 위한 임계 영역
-    FCriticalSection ProjectorInfoLock;
-
-    // 응답 큐 동기화를 위한 임계 영역
-    FCriticalSection ResponseQueueLock;
-
     // 마지막 오류 정보
     EPJLinkErrorCode LastErrorCode;
     FString LastErrorMessage;
@@ -257,23 +239,4 @@ private:
     FPJLinkDiagnosticData ConnectionDiagnosticData;
     FPJLinkDiagnosticData LastCommandDiagnosticData;
      
-    // 명령 추적을 위한 구조체
-    struct FPJLinkCommandInfo
-    {
-        EPJLinkCommand Command;
-        FString Parameter;
-        double SendTime;
-        float TimeoutSeconds;
-        bool bResponseReceived;
-    };
-
-    // 명령 추적 맵 및 타이머 핸들
-    TMap<EPJLinkCommand, FPJLinkCommandInfo> PendingCommands;
-    TMap<EPJLinkCommand, FTimerHandle> CommandTimeoutHandles;
-    FCriticalSection CommandTrackingLock;
-
-        // 재연결 관련 변수
-    int32 ReconnectAttemptCount = 0;
-    FTimerHandle ReconnectTimerHandle;
-    FPJLinkProjectorInfo LastProjectorInfo;
-};
+ };

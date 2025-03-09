@@ -215,6 +215,86 @@ public:
     UFUNCTION(BlueprintCallable, Category = "PJLink|Advanced")
     UPJLinkNetworkManager* GetNetworkManager() const { return NetworkManager; }
 
+    // 블루프린트에서 쉽게 사용할 수 있는 상태 체크 함수
+    UFUNCTION(BlueprintPure, Category = "PJLink|Status")
+    bool IsPoweredOn() const { return GetPowerStatus() == EPJLinkPowerStatus::PoweredOn; }
+
+    UFUNCTION(BlueprintPure, Category = "PJLink|Status")
+    bool IsPoweredOff() const { return GetPowerStatus() == EPJLinkPowerStatus::PoweredOff; }
+
+    UFUNCTION(BlueprintPure, Category = "PJLink|Status")
+    bool IsWarmingUp() const { return GetPowerStatus() == EPJLinkPowerStatus::WarmingUp; }
+
+    UFUNCTION(BlueprintPure, Category = "PJLink|Status")
+    bool IsCoolingDown() const { return GetPowerStatus() == EPJLinkPowerStatus::CoolingDown; }
+
+    // 블루프린트 노드로 상태 문자열 가져오기
+    UFUNCTION(BlueprintPure, Category = "PJLink|Status", meta = (DisplayName = "Get Power Status As String"))
+    FString GetPowerStatusString() const { return PJLinkHelpers::PowerStatusToString(GetPowerStatus()); }
+
+    UFUNCTION(BlueprintPure, Category = "PJLink|Status", meta = (DisplayName = "Get Input Source As String"))
+    FString GetInputSourceString() const { return PJLinkHelpers::InputSourceToString(GetInputSource()); }
+
+    // 단순화된 입력 소스 전환 (열거형 대신 인덱스 기반)
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Control", meta = (DisplayName = "Switch Input Source By Index"))
+    bool SwitchInputSourceByIndex(int32 InputSourceIndex)
+    {
+        if (InputSourceIndex < 0 || InputSourceIndex > 4)
+        {
+            return false;
+        }
+
+        static const EPJLinkInputSource InputSources[] = {
+            EPJLinkInputSource::RGB,      // 0
+            EPJLinkInputSource::VIDEO,    // 1
+            EPJLinkInputSource::DIGITAL,  // 2
+            EPJLinkInputSource::STORAGE,  // 3
+            EPJLinkInputSource::NETWORK   // 4
+        };
+
+        return SwitchInputSource(InputSources[InputSourceIndex]);
+    }
+
+    // 연결 상태 정보를 한 번에 가져오는 노드
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Status")
+    void GetConnectionStatus(bool& bIsConnected, bool& bIsPoweredOn, EPJLinkInputSource& CurrentSource, FString& ProjectorName)
+    {
+        bIsConnected = IsConnected();
+        bIsPoweredOn = IsPoweredOn();
+        CurrentSource = GetInputSource();
+        ProjectorName = GetProjectorName();
+    }
+
+    // 진단 보고서 생성 (다이제스트 모드)
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Diagnostic")
+    FString GenerateDiagnosticDigest(int32 MaxEntries = 10)
+    {
+        if (!NetworkManager)
+        {
+            return TEXT("Network Manager not available");
+        }
+
+        FString Report = TEXT("PJLink Component Diagnostic Digest\n");
+        Report += TEXT("=====================================\n\n");
+
+        Report += TEXT("Component: ") + GetName() + TEXT("\n");
+        Report += TEXT("Owner: ") + GetOwner()->GetName() + TEXT("\n\n");
+
+        Report += TEXT("Connection Status: ") + FString(IsConnected() ? TEXT("Connected") : TEXT("Disconnected")) + TEXT("\n");
+        Report += TEXT("Power Status: ") + GetPowerStatusString() + TEXT("\n");
+        Report += TEXT("Input Source: ") + GetInputSourceString() + TEXT("\n\n");
+
+        // 네트워크 매니저의 진단 데이터 요약
+        if (NetworkManager)
+        {
+            Report += TEXT("Last Commands:\n");
+            Report += NetworkManager->GetLastCommandDiagnosticData().GenerateDigestReport(MaxEntries);
+            Report += TEXT("\n");
+        }
+
+        return Report;
+    }
+
 private:
     // 네트워크 매니저 인스턴스
     UPROPERTY()

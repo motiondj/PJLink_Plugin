@@ -16,23 +16,23 @@ enum class EPJLinkClass : uint8
 UENUM(BlueprintType)
 enum class EPJLinkPowerStatus : uint8
 {
-    PoweredOff UMETA(DisplayName = "Powered Off"),
-    PoweredOn UMETA(DisplayName = "Powered On"),
-    CoolingDown UMETA(DisplayName = "Cooling Down"),
-    WarmingUp UMETA(DisplayName = "Warming Up"),
-    Unknown UMETA(DisplayName = "Unknown")
+    PoweredOff UMETA(DisplayName = "Powered Off", ToolTip = "Projector is completely off"),
+    PoweredOn UMETA(DisplayName = "Powered On", ToolTip = "Projector is on and ready for use"),
+    CoolingDown UMETA(DisplayName = "Cooling Down", ToolTip = "Projector is cooling down after being turned off"),
+    WarmingUp UMETA(DisplayName = "Warming Up", ToolTip = "Projector is warming up and preparing to display"),
+    Unknown UMETA(DisplayName = "Unknown State", ToolTip = "The projector's power state is unknown")
 };
 
 // PJLink 입력 소스
 UENUM(BlueprintType)
 enum class EPJLinkInputSource : uint8
 {
-    RGB UMETA(DisplayName = "RGB"),
-    VIDEO UMETA(DisplayName = "Video"),
-    DIGITAL UMETA(DisplayName = "Digital"),
-    STORAGE UMETA(DisplayName = "Storage"),
-    NETWORK UMETA(DisplayName = "Network"),
-    Unknown UMETA(DisplayName = "Unknown")
+    RGB UMETA(DisplayName = "RGB (1)", ToolTip = "Computer or RGB input"),
+    VIDEO UMETA(DisplayName = "Video (2)", ToolTip = "Composite video input"),
+    DIGITAL UMETA(DisplayName = "Digital (3)", ToolTip = "Digital input like HDMI or DVI"),
+    STORAGE UMETA(DisplayName = "Storage (4)", ToolTip = "USB storage or internal memory"),
+    NETWORK UMETA(DisplayName = "Network (5)", ToolTip = "Network streaming or web content"),
+    Unknown UMETA(DisplayName = "Unknown Input", ToolTip = "Input source is unknown")
 };
 
 // PJLink 프로젝터 정보 구조체

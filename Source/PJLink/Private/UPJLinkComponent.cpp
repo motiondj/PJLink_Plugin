@@ -13,7 +13,8 @@ DEFINE_LOG_CATEGORY_STATIC(LogPJLinkComponent, Log, All);
 UPJLinkComponent::UPJLinkComponent()
 {
     // 컴포넌트 기본 설정
-    PrimaryComponentTick.bCanEverTick = false;
+    PrimaryComponentTick.bCanEverTick = true;  // Tick 활성화
+    PrimaryComponentTick.TickInterval = 0.1f;  // 0.1초마다 Tick
     bAutoActivate = true;
 
     // 프로젝터 정보 기본값
@@ -192,7 +193,22 @@ void UPJLinkComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 void UPJLinkComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
     Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-    // 현재 Tick 기능은 사용하지 않음
+
+    // 블루프린트용 간단한 상태 업데이트 (이벤트는 발생시키지 않음)
+    if (NetworkManager && IsConnected())
+    {
+        // 마지막 상태 확인 후 일정 시간 경과한 경우 상태 재확인
+        static float TimeSinceLastStatusCheck = 0.0f;
+        TimeSinceLastStatusCheck += DeltaTime;
+
+        if (TimeSinceLastStatusCheck >= 5.0f)  // 5초마다 자동 상태 확인
+        {
+            TimeSinceLastStatusCheck = 0.0f;
+
+            // 블루프린트에서의 빈번한 폴링을 대신하는 자동 상태 확인
+            RequestStatus();
+        }
+    }
 }
 
 bool UPJLinkComponent::Connect()

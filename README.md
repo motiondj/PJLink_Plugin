@@ -1,108 +1,47 @@
 # PJLink 플러그인 for Unreal Engine 5.5
 
-![PJLink Logo](Resources/Icon128.png)
-
 ## 개요
-
-PJLink는 언리얼 엔진 5.5에서 PJLink 프로토콜을 통해 프로젝터를 제어할 수 있는 플러그인입니다. 이 플러그인을 사용하면 게임이나 애플리케이션에서 직접 프로젝터의 전원을 켜고 끄거나, 입력 소스를 변경하는 등의 작업을 수행할 수 있습니다.
+PJLink 플러그인은 언리얼 엔진 5.5에서 PJLink 프로토콜을 사용하여 프로젝터를 제어할 수 있는 기능을 제공합니다. 블루프린트와 C++에서 모두 사용 가능하며, 네트워크를 통해 PJLink 호환 프로젝터와 통신합니다.
 
 ## 주요 기능
-
-- **간편한 프로젝터 제어**: 블루프린트 또는 C++에서 프로젝터 제어 가능
-- **다양한 명령 지원**: 전원 켜기/끄기, 입력 소스 변경, 상태 확인 등
-- **이벤트 기반 시스템**: 프로젝터 상태 변화에 대응하는 이벤트 제공
-- **안정적인 오류 처리**: 네트워크 오류 발생 시 자동 재연결 및 복구
-- **상태 머신 구현**: 프로젝터 상태에 따른 명령 실행 관리
-- **프리셋 시스템**: 자주 사용하는 프로젝터 설정 저장 및 불러오기
-- **진단 시스템**: 문제 해결을 위한 상세한 진단 정보 제공
-
-## 시스템 요구사항
-
-- Unreal Engine 5.5 이상
-- Windows, macOS, 또는 Linux
-- 네트워크로 연결된 PJLink 호환 프로젝터
+- 프로젝터 전원 제어 (켜기/끄기)
+- 입력 소스 전환
+- 상태 모니터링 및 이벤트 처리
+- 프리셋 관리 (설정 저장 및 불러오기)
+- 오류 처리 및 자동 재연결
+- 블루프린트 친화적인 인터페이스
+- 확장 가능한 아키텍처
 
 ## 설치 방법
-
-### 마켓플레이스에서 설치
-1. 언리얼 엔진 마켓플레이스에서 "PJLink" 검색
-2. 플러그인 구매 및 다운로드
-3. 프로젝트에 플러그인 추가
-
-### 수동 설치
-1. 이 저장소를 클론 또는 다운로드
-2. `PJLink` 폴더를 프로젝트의 `Plugins` 폴더로 복사 (없는 경우 생성)
-3. 프로젝트를 열고 플러그인 활성화
+1. 플러그인 파일을 프로젝트의 Plugins 폴더에 복사합니다.
+2. 언리얼 에디터를 실행하고 플러그인을 활성화합니다.
+3. 프로젝트를 다시 시작합니다.
 
 ## 빠른 시작
+1. 액터에 PJLink 컴포넌트를 추가합니다.
+2. 프로젝터 정보(IP 주소, 포트 등)를 설정합니다.
+3. 자동 연결 옵션을 활성화하거나 수동으로 Connect 함수를 호출합니다.
+4. PowerOn, PowerOff, SwitchInputSource 등의 함수를 사용하여 프로젝터를 제어합니다.
 
-### 블루프린트에서 사용
-
-1. 액터 블루프린트 생성
-2. 컴포넌트 패널에서 "PJLink Projector Component" 추가
-3. 컴포넌트 세부 정보에서 프로젝터 IP 주소 및 포트 설정
-4. 원하는 이벤트에 프로젝터 제어 명령 연결
-
-```
-BeginPlay 이벤트 → Connect → Power On
-```
-
-자세한 사용 방법은 `Documentation/PJLinkBlueprintGuide.md` 참조
-
-### C++에서 사용
-
-```cpp
-#include "UPJLinkComponent.h"
-
-// 컴포넌트 생성
-UPJLinkComponent* PJLinkComponent = CreateDefaultSubobject<UPJLinkComponent>(TEXT("PJLinkComponent"));
-
-// 프로젝터 설정
-PJLinkComponent->ProjectorInfo.IPAddress = TEXT("192.168.1.100");
-PJLinkComponent->ProjectorInfo.Port = 4352;
-
-// 프로젝터 연결 및 제어
-PJLinkComponent->Connect();
-PJLinkComponent->PowerOn();
-```
-
-자세한 사용 방법은 `Documentation/PJLinkDeveloperGuide.md` 참조
-
-## 지원되는 PJLink 명령
-
-- **POWR**: 전원 제어 (켜기/끄기)
-- **INPT**: 입력 소스 전환
-- **AVMT**: AV 음소거
-- **ERST**: 오류 상태 요청
-- **LAMP**: 램프 상태 요청
-- **INST**: 입력 단자 정보 요청
-- **NAME**: 프로젝터 이름 요청
-- **INF1**: 제조사 정보 요청
-- **INF2**: 제품 정보 요청
-- **INFO**: 기타 정보 요청
-- **CLSS**: PJLink 클래스 정보 요청
+## 예제
+플러그인에는 다음과 같은 예제가 포함되어 있습니다:
+- 기본 연결 및 제어 예제
+- 상태 모니터링 UI 예제
+- 프리셋 관리 예제
+- 오류 처리 예제
 
 ## 문서
+자세한 사용법은 다음 문서를 참조하세요:
+- [개발자 가이드](./Docs/PJLinkDeveloperGuide.md)
+- [블루프린트 가이드](./Docs/PJLinkBlueprintGuide.md)
+- [API 참조](./Docs/API_Reference.md)
 
-- [개발자 가이드](Documentation/PJLinkDeveloperGuide.md)
-- [블루프린트 가이드](Documentation/PJLinkBlueprintGuide.md)
-- [테스트 체크리스트](Documentation/TestChecklist.md)
+## 문제 해결
+일반적인 문제 해결 방법:
+- 프로젝터와의 네트워크 연결을 확인합니다.
+- 올바른 IP 주소와 포트를 설정했는지 확인합니다.
+- 인증이 필요한 경우 올바른 암호를 설정했는지 확인합니다.
+- 진단 보고서 기능을 사용하여 상세한 문제 분석이 가능합니다.
 
-## 로드맵
-
-- 다중 프로젝터 동시 제어
-- 네트워크 상의 PJLink 장치 자동 검색
-- 명령 스케줄링 기능
-- 웹 인터페이스 지원
-- 모바일 플랫폼 지원
-
-## 라이선스
-
-이 플러그인은 MIT 라이선스 하에 배포됩니다. [LICENSE](LICENSE.md) 파일을 참조하세요.
-
-## 연락처 및 지원
-
-- 이슈 트래커: [GitHub Issues](https://github.com/yourusername/pjlink-ue5/issues)
-- 이메일: motiondj@motiondj.com
-- 웹사이트: www.motiondj.com
-
+## 라이센스
+이 플러그인은 MIT 라이센스에 따라 배포됩니다. 자세한 내용은 LICENSE 파일을 참조하세요.

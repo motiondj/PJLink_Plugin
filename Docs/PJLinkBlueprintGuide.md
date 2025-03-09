@@ -64,7 +64,7 @@ PJLink 컴포넌트는 프로젝터 설정을 프리셋으로 저장하고 불�
 - Get Preset Display Names: 표시용 프리셋 이름 목록 가져오기
 
 ### 프리셋 관리 UI 예제
-![프리셋 관리 UI 예제](./Images/PJLink_Preset_Example.png)
+![프리셋 관리 UI 예제](./Images/PJLink_Preset_UI_Example.png)
 
 ## 오류 처리
 오류가 발생했을 때 대응하는 방법:

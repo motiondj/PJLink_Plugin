@@ -168,6 +168,194 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FPJLinkCommandCompletedDelegate,
     EPJLinkCommand, Command,
     bool, bSuccess);
 
+/**
+ * 프로젝터 상태 정보 구조체
+ */
+USTRUCT(BlueprintType)
+struct PJLINK_API FPJLinkProjectorStatus
+{
+    GENERATED_BODY()
+
+    // 프로젝터 ID
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PJLink|Status")
+    FString ProjectorID;
+
+    // 프로젝터 이름
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PJLink|Status")
+    FString ProjectorName;
+
+    // IP 주소
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PJLink|Status")
+    FString IPAddress;
+
+    // 포트
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PJLink|Status")
+    int32 Port;
+
+    // 현재 상태
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PJLink|Status")
+    FPJLinkProjectorStatusRecord CurrentStatus;
+
+    // 이전 상태 기록 (최대 10개)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PJLink|Status")
+    TArray<FPJLinkProjectorStatusRecord> StatusHistory;
+
+    // 마지막 응답 시간
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PJLink|Status")
+    FDateTime LastResponseTime;
+
+    // 마지막 명령 시간
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PJLink|Status")
+    FDateTime LastCommandTime;
+
+    // 응답 시간 (밀리초)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PJLink|Status")
+    int32 ResponseTimeMs;
+
+    // 연결 실패 횟수
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PJLink|Status")
+    int32 ConnectionFailureCount;
+
+    // 명령 실패 횟수
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PJLink|Status")
+    int32 CommandFailureCount;
+
+    // 상태가 정상인지 확인
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PJLink|Status")
+    bool bIsHealthy;
+
+    // 기본 생성자
+    FPJLinkProjectorStatus()
+        : Port(4352)
+        , ResponseTimeMs(0)
+        , ConnectionFailureCount(0)
+        , CommandFailureCount(0)
+        , bIsHealthy(true)
+    {
+    }
+
+    // 프로젝터 정보로 생성하는 생성자
+    FPJLinkProjectorStatus(const FString& InProjectorID, const FPJLinkProjectorInfo& ProjectorInfo)
+        : ProjectorID(InProjectorID)
+        , ProjectorName(ProjectorInfo.Name)
+        , IPAddress(ProjectorInfo.IPAddress)
+        , Port(ProjectorInfo.Port)
+        , ResponseTimeMs(0)
+        , ConnectionFailureCount(0)
+        , CommandFailureCount(0)
+        , bIsHealthy(true)
+    {
+        // 현재 상태 초기화
+        CurrentStatus = FPJLinkProjectorStatusRecord(
+            ProjectorInfo.PowerStatus,
+            ProjectorInfo.CurrentInputSource,
+            ProjectorInfo.bIsConnected
+        );
+    }
+
+    // 상태 업데이트 (기존 상태가 이전 이력으로 이동)
+    void UpdateStatus(EPJLinkPowerStatus InPowerStatus, EPJLinkInputSource InInputSource, bool bInIsConnected, const FString& InErrorMessage = TEXT(""))
+    {
+        // 이전 상태를 이력에 추가
+        StatusHistory.Insert(CurrentStatus, 0);
+
+        // 이력 크기 제한
+        if (StatusHistory.Num() > 10)
+        {
+            StatusHistory.RemoveAt(10, StatusHistory.Num() - 10);
+        }
+
+        // 새 상태 설정
+        CurrentStatus = FPJLinkProjectorStatusRecord(
+            InPowerStatus,
+            InInputSource,
+            bInIsConnected,
+            InErrorMessage
+        );
+
+        // 마지막 응답 시간 업데이트
+        LastResponseTime = FDateTime::Now();
+
+        // 응답 시간 계산
+        if (LastCommandTime != FDateTime())
+        {
+            FTimespan ResponseSpan = LastResponseTime - LastCommandTime;
+            ResponseTimeMs = FMath::FloorToInt(ResponseSpan.GetTotalMilliseconds());
+        }
+
+        // 상태가 정상인지 확인
+        bIsHealthy = bInIsConnected && InErrorMessage.IsEmpty();
+    }
+
+    // 명령 전송 기록
+    void RecordCommandSent()
+    {
+        LastCommandTime = FDateTime::Now();
+    }
+
+    // 연결 실패 기록
+    void RecordConnectionFailure()
+    {
+        ConnectionFailureCount++;
+        bIsHealthy = false;
+
+        // 에러 메시지 업데이트
+        CurrentStatus.ErrorMessage = TEXT("Connection failed");
+    }
+
+    // 명령 실패 기록
+    void RecordCommandFailure(const FString& ErrorMessage)
+    {
+        CommandFailureCount++;
+
+        // 에러 메시지 업데이트
+        CurrentStatus.ErrorMessage = ErrorMessage;
+
+        // 일정 횟수 이상 실패하면 상태를 비정상으로 표시
+        if (CommandFailureCount > 3)
+        {
+            bIsHealthy = false;
+        }
+    }
+
+    // 마지막 응답 이후 경과 시간 (초)
+    float GetTimeSinceLastResponse() const
+    {
+        if (LastResponseTime == FDateTime())
+        {
+            return -1.0f; // 응답 없음
+        }
+
+        FTimespan Span = FDateTime::Now() - LastResponseTime;
+        return Span.GetTotalSeconds();
+    }
+
+    // 마지막 명령 이후 경과 시간 (초)
+    float GetTimeSinceLastCommand() const
+    {
+        if (LastCommandTime == FDateTime())
+        {
+            return -1.0f; // 명령 없음
+        }
+
+        FTimespan Span = FDateTime::Now() - LastCommandTime;
+        return Span.GetTotalSeconds();
+    }
+
+    // 카운터 리셋
+    void ResetCounters()
+    {
+        ConnectionFailureCount = 0;
+        CommandFailureCount = 0;
+        bIsHealthy = true;
+    }
+};
+
+/**
+ * 프로젝터 상태 변경 이벤트용 델리게이트
+ */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FPJLinkProjectorStatusChangedDelegate, const FPJLinkProjectorStatus&, ProjectorStatus);
+
 // PJLink 오류 코드
 UENUM(BlueprintType)
 enum class EPJLinkErrorCode : uint8
@@ -205,3 +393,223 @@ namespace PJLinkHelpers
     /** 응답 상태를 문자열로 변환 */
     PJLINK_API FString ResponseStatusToString(EPJLinkResponseStatus Status);
 }
+
+/**
+ * 프로젝터 그룹 정보를 저장하는 구조체
+ */
+USTRUCT(BlueprintType)
+struct PJLINK_API FPJLinkProjectorGroup
+{
+    GENERATED_BODY()
+
+    // 그룹 이름
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Group")
+    FString GroupName;
+
+    // 그룹 설명
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Group")
+    FString Description;
+
+    // 그룹 색상 (UI 표시용)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Group")
+    FLinearColor GroupColor;
+
+    // 그룹 내 프로젝터 ID 목록
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PJLink|Group")
+    TArray<FString> ProjectorIDs;
+
+    // 기본 생성자
+    FPJLinkProjectorGroup()
+        : GroupName(TEXT("New Group"))
+        , Description(TEXT(""))
+        , GroupColor(FLinearColor(0.0f, 0.4f, 0.7f, 1.0f))
+    {
+    }
+
+    // 이름으로 생성하는 생성자
+    FPJLinkProjectorGroup(const FString& InGroupName)
+        : GroupName(InGroupName)
+        , Description(TEXT(""))
+        , GroupColor(FLinearColor(0.0f, 0.4f, 0.7f, 1.0f))
+    {
+    }
+
+    // 전체 정보로 생성하는 생성자
+    FPJLinkProjectorGroup(const FString& InGroupName, const FString& InDescription, const FLinearColor& InColor)
+        : GroupName(InGroupName)
+        , Description(InDescription)
+        , GroupColor(InColor)
+    {
+    }
+
+    // 프로젝터 ID 추가
+    void AddProjectorID(const FString& ProjectorID)
+    {
+        if (!ProjectorIDs.Contains(ProjectorID))
+        {
+            ProjectorIDs.Add(ProjectorID);
+        }
+    }
+
+    // 프로젝터 ID 제거
+    bool RemoveProjectorID(const FString& ProjectorID)
+    {
+        return ProjectorIDs.Remove(ProjectorID) > 0;
+    }
+
+    // 프로젝터 ID 포함 여부 확인
+    bool ContainsProjectorID(const FString& ProjectorID) const
+    {
+        return ProjectorIDs.Contains(ProjectorID);
+    }
+
+    // 그룹에 있는 프로젝터 수
+    int32 GetProjectorCount() const
+    {
+        return ProjectorIDs.Num();
+    }
+};
+
+/**
+ * 그룹 관련 이벤트용 델리게이트
+ */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FPJLinkGroupChangedDelegate, const FString&, GroupName);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FPJLinkProjectorGroupAssignmentChangedDelegate, const FString&, ProjectorID, const FString&, GroupName);
+
+bool UPJLinkManagerComponent::IsProjectorInGroup(UPJLinkComponent* ProjectorComponent, const FString& GroupName) const
+{
+    if (!ProjectorComponent || !GroupMap.Contains(GroupName))
+    {
+        return false;
+    }
+
+    FPJLinkProjectorInfo ProjectorInfo = ProjectorComponent->GetProjectorInfo();
+    FString ProjectorID = GenerateProjectorID(ProjectorInfo);
+
+    return GroupMap[GroupName].ContainsProjectorID(ProjectorID);
+}
+
+/**
+ * 프로젝터 상태 기록을 저장하는 구조체
+ */
+USTRUCT(BlueprintType)
+struct PJLINK_API FPJLinkProjectorStatusRecord
+{
+    GENERATED_BODY()
+
+    // 타임스탬프
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PJLink|Status")
+    FDateTime Timestamp;
+
+    // 전원 상태
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PJLink|Status")
+    EPJLinkPowerStatus PowerStatus;
+
+    // 입력 소스
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PJLink|Status")
+    EPJLinkInputSource InputSource;
+
+    // 연결 상태
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PJLink|Status")
+    bool bIsConnected;
+
+    // 오류 메시지 (있는 경우)
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PJLink|Status")
+    FString ErrorMessage;
+
+    // 기본 생성자
+    FPJLinkProjectorStatusRecord()
+        : Timestamp(FDateTime::Now())
+        , PowerStatus(EPJLinkPowerStatus::Unknown)
+        , InputSource(EPJLinkInputSource::Unknown)
+        , bIsConnected(false)
+        , ErrorMessage(TEXT(""))
+    {
+    }
+
+    // 정보로 생성하는 생성자
+    FPJLinkProjectorStatusRecord(EPJLinkPowerStatus InPowerStatus, EPJLinkInputSource InInputSource, bool bInIsConnected, const FString& InErrorMessage = TEXT(""))
+        : Timestamp(FDateTime::Now())
+        , PowerStatus(InPowerStatus)
+        , InputSource(InInputSource)
+        , bIsConnected(bInIsConnected)
+        , ErrorMessage(InErrorMessage)
+    {
+    }
+};
+
+void UPJLinkManagerComponent::HandleConnectionChanged(UPJLinkComponent* ProjectorComponent, bool bIsConnected)
+{
+    if (!ProjectorComponent)
+    {
+        return;
+    }
+
+    FPJLinkProjectorInfo ProjectorInfo = ProjectorComponent->GetProjectorInfo();
+    FString ProjectorID = GenerateProjectorID(ProjectorInfo);
+
+    if (ProjectorStatusMap.Contains(ProjectorID))
+    {
+        FPJLinkProjectorStatus& Status = ProjectorStatusMap[ProjectorID];
+
+        // 연결 실패 시 카운터 증가
+        if (!bIsConnected)
+        {
+            Status.RecordConnectionFailure();
+        }
+        else
+        {
+            // 연결 성공 시 카운터 리셋
+            Status.ResetCounters();
+        }
+
+        // 상태 업데이트
+        Status.UpdateStatus(
+            ProjectorComponent->GetPowerStatus(),
+            ProjectorComponent->GetInputSource(),
+            bIsConnected
+        );
+
+        // 상태 변경 이벤트 발생
+        OnProjectorStatusChanged.Broadcast(Status);
+
+        PJLINK_LOG_INFO(TEXT("Connection status changed for projector %s: %s"),
+            *ProjectorInfo.Name,
+            bIsConnected ? TEXT("Connected") : TEXT("Disconnected"));
+    }
+}
+
+void UPJLinkManagerComponent::HandleErrorStatus(UPJLinkComponent* ProjectorComponent, const FString& ErrorMessage)
+{
+    if (!ProjectorComponent)
+    {
+        return;
+    }
+
+    FPJLinkProjectorInfo ProjectorInfo = ProjectorComponent->GetProjectorInfo();
+    FString ProjectorID = GenerateProjectorID(ProjectorInfo);
+
+    if (ProjectorStatusMap.Contains(ProjectorID))
+    {
+        FPJLinkProjectorStatus& Status = ProjectorStatusMap[ProjectorID];
+
+        // 명령 실패 기록
+        Status.RecordCommandFailure(ErrorMessage);
+
+        // 상태 업데이트
+        Status.UpdateStatus(
+            ProjectorComponent->GetPowerStatus(),
+            ProjectorComponent->GetInputSource(),
+            ProjectorComponent->IsConnected(),
+            ErrorMessage
+        );
+
+        // 상태 변경 이벤트 발생
+        OnProjectorStatusChanged.Broadcast(Status);
+
+        PJLINK_LOG_WARNING(TEXT("Error status for projector %s: %s"),
+            *ProjectorInfo.Name,
+            *ErrorMessage);
+    }
+}
+

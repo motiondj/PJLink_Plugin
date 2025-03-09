@@ -101,6 +101,54 @@ public:
     UFUNCTION(BlueprintPure, Category = "PJLink|Discovery")
     bool HasValidResults() const;
 
+    /**
+ * 캐싱된 검색 결과 불러오기
+ */
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery")
+    bool LoadCachedResults();
+
+    /**
+     * 현재 검색 결과 캐싱
+     */
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery")
+    bool SaveResultsToCache();
+
+    /**
+     * 캐시 파일 경로 가져오기
+     */
+    UFUNCTION(BlueprintPure, Category = "PJLink|Discovery")
+    FString GetCacheFilePath() const;
+
+    /**
+     * 마지막 캐시 날짜/시간 가져오기
+     */
+    UFUNCTION(BlueprintPure, Category = "PJLink|Discovery")
+    FDateTime GetLastCacheTime() const;
+
+    /**
+ * 오류 메시지 표시
+ */
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery")
+    void ShowErrorMessage(const FString& ErrorMessage);
+
+    /**
+     * 성공 메시지 표시
+     */
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery")
+    void ShowSuccessMessage(const FString& SuccessMessage);
+
+    /**
+     * 정보 메시지 표시
+     */
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery")
+    void ShowInfoMessage(const FString& InfoMessage);
+
+    /**
+     * 메시지 숨기기
+     */
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery")
+    void HideMessage();
+
 protected:
     /**
      * 검색 완료 이벤트 처리
@@ -138,8 +186,11 @@ protected:
     UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery")
     void UpdateStatusText(const FString& StatusText);
 
+    UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery")
+    void OnShowMessage(const FString& Message, const FLinearColor& Color);
 
-
+    UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery")
+    void OnHideMessage();
 
 private:
     /**
@@ -169,4 +220,36 @@ private:
     // 필터 텍스트
     UPROPERTY()
     FString FilterText;
+
+    // 마지막 캐시 시간
+    UPROPERTY()
+    FDateTime LastCacheTime;
+
+    // 캐시 파일명
+    UPROPERTY()
+    FString CacheFileName = TEXT("PJLinkDiscoveryCache.json");
+
+    // 메시지 색상
+    UPROPERTY()
+    FLinearColor ErrorColor = FLinearColor(1.0f, 0.2f, 0.2f, 1.0f); // 빨간색
+
+    UPROPERTY()
+    FLinearColor SuccessColor = FLinearColor(0.2f, 0.8f, 0.2f, 1.0f); // 녹색
+
+    UPROPERTY()
+    FLinearColor InfoColor = FLinearColor(0.2f, 0.6f, 1.0f, 1.0f); // 파란색
+
+    // 마지막 메시지가 표시된 시간
+    UPROPERTY()
+    float LastMessageTime = 0.0f;
+
+    // 메시지 자동 숨김 시간 (초)
+    UPROPERTY(EditAnywhere, Category = "PJLink|Discovery")
+    float MessageAutoHideTime = 5.0f;
+
+    // 메시지 자동 숨김 타이머 핸들
+    FTimerHandle MessageTimerHandle;
+
+    // private 섹션에 다음 함수 선언 추가:
+    void SetupMessageTimer();
 };

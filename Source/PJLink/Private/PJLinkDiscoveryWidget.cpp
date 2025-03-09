@@ -5,6 +5,12 @@
 #include "PJLinkManagerComponent.h"
 #include "UPJLinkComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "Misc/FileHelper.h"
+#include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonWriter.h"
+#include "Misc/Paths.h"
+#include "HAL/PlatformFilemanager.h"
 
 UPJLinkDiscoveryWidget::UPJLinkDiscoveryWidget(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer), DiscoveryManager(nullptr)
@@ -62,7 +68,7 @@ void UPJLinkDiscoveryWidget::StartBroadcastSearch(float TimeoutSeconds)
     UpdateResultsList(DiscoveryResults);
 
     // 상태 업데이트
-    UpdateStatusText(TEXT("Starting broadcast search..."));
+    ShowInfoMessage(TEXT("브로드캐스트 검색을 시작합니다..."));
     UpdateProgressBar(0.0f, 0, 0);
 
     // 검색 시작
@@ -70,7 +76,7 @@ void UPJLinkDiscoveryWidget::StartBroadcastSearch(float TimeoutSeconds)
 
     if (CurrentDiscoveryID.IsEmpty())
     {
-        UpdateStatusText(TEXT("Failed to start broadcast search"));
+        ShowErrorMessage(TEXT("브로드캐스트 검색을 시작하지 못했습니다"));
     }
 }
 
@@ -86,7 +92,7 @@ void UPJLinkDiscoveryWidget::StartRangeSearch(const FString& StartIP, const FStr
     UpdateResultsList(DiscoveryResults);
 
     // 상태 업데이트
-    UpdateStatusText(FString::Printf(TEXT("Starting IP range search (%s - %s)..."), *StartIP, *EndIP));
+    ShowInfoMessage(FString::Printf(TEXT("IP 범위 검색을 시작합니다 (%s - %s)..."), *StartIP, *EndIP));
     UpdateProgressBar(0.0f, 0, 0);
 
     // 검색 시작
@@ -94,7 +100,7 @@ void UPJLinkDiscoveryWidget::StartRangeSearch(const FString& StartIP, const FStr
 
     if (CurrentDiscoveryID.IsEmpty())
     {
-        UpdateStatusText(TEXT("Failed to start IP range search"));
+        ShowErrorMessage(TEXT("IP 범위 검색을 시작하지 못했습니다"));
     }
 }
 
@@ -110,7 +116,7 @@ void UPJLinkDiscoveryWidget::StartSubnetSearch(const FString& SubnetAddress, con
     UpdateResultsList(DiscoveryResults);
 
     // 상태 업데이트
-    UpdateStatusText(FString::Printf(TEXT("Starting subnet search (%s/%s)..."), *SubnetAddress, *SubnetMask));
+    ShowInfoMessage(FString::Printf(TEXT("서브넷 검색을 시작합니다 (%s/%s)..."), *SubnetAddress, *SubnetMask));
     UpdateProgressBar(0.0f, 0, 0);
 
     // 검색 시작
@@ -118,7 +124,7 @@ void UPJLinkDiscoveryWidget::StartSubnetSearch(const FString& SubnetAddress, con
 
     if (CurrentDiscoveryID.IsEmpty())
     {
-        UpdateStatusText(TEXT("Failed to start subnet search"));
+        ShowErrorMessage(TEXT("서브넷 검색을 시작하지 못했습니다"));
     }
 }
 
@@ -127,7 +133,7 @@ void UPJLinkDiscoveryWidget::CancelSearch()
     if (DiscoveryManager && !CurrentDiscoveryID.IsEmpty())
     {
         DiscoveryManager->CancelDiscovery(CurrentDiscoveryID);
-        UpdateStatusText(TEXT("Search cancelled"));
+        ShowInfoMessage(TEXT("검색이 취소되었습니다"));
     }
 }
 
@@ -260,18 +266,31 @@ void UPJLinkDiscoveryWidget::OnDiscoveryCompleted(const TArray<FPJLinkDiscoveryR
     DiscoveryResults = DiscoveredDevices;
 
     // UI 업데이트
-    UpdateResultsList(DiscoveryResults);
+    UpdateResultsList(GetFilteredAndSortedResults());
 
     if (bSuccess)
     {
-        UpdateStatusText(FString::Printf(TEXT("Search completed, found %d devices"), DiscoveryResults.Num()));
+        if (DiscoveryResults.Num() > 0)
+        {
+            ShowSuccessMessage(FString::Printf(TEXT("검색 완료, %d개 장치를 찾았습니다"), DiscoveryResults.Num()));
+        }
+        else
+        {
+            ShowInfoMessage(TEXT("검색 완료, 장치를 찾지 못했습니다"));
+        }
     }
     else
     {
-        UpdateStatusText(TEXT("Search failed or was cancelled"));
+        ShowErrorMessage(TEXT("검색이 실패했거나 취소되었습니다"));
     }
 
     UpdateProgressBar(100.0f, DiscoveryResults.Num(), 0);
+
+    // 캐시에 자동 저장
+    if (bSuccess && DiscoveryResults.Num() > 0)
+    {
+        SaveResultsToCache();
+    }
 }
 
 void UPJLinkDiscoveryWidget::OnDeviceDiscovered(const FPJLinkDiscoveryResult& DiscoveredDevice)
@@ -280,8 +299,8 @@ void UPJLinkDiscoveryWidget::OnDeviceDiscovered(const FPJLinkDiscoveryResult& Di
     DiscoveryResults.Add(DiscoveredDevice);
 
     // UI 업데이트
-    UpdateResultsList(DiscoveryResults);
-    UpdateStatusText(FString::Printf(TEXT("Found device at %s"), *DiscoveredDevice.IPAddress));
+    UpdateResultsList(GetFilteredAndSortedResults());
+    ShowInfoMessage(FString::Printf(TEXT("장치를 발견했습니다: %s"), *DiscoveredDevice.IPAddress));
 }
 
 void UPJLinkDiscoveryWidget::OnDiscoveryProgressUpdated(const FPJLinkDiscoveryStatus& Status)
@@ -291,11 +310,267 @@ void UPJLinkDiscoveryWidget::OnDiscoveryProgressUpdated(const FPJLinkDiscoverySt
 
     if (Status.bIsComplete)
     {
-        UpdateStatusText(FString::Printf(TEXT("Search completed, found %d devices"), Status.DiscoveredDevices));
+        if (Status.DiscoveredDevices > 0)
+        {
+            ShowSuccessMessage(FString::Printf(TEXT("검색 완료, %d개 장치를 찾았습니다"), Status.DiscoveredDevices));
+        }
+        else
+        {
+            ShowInfoMessage(TEXT("검색 완료, 장치를 찾지 못했습니다"));
+        }
     }
     else
     {
-        UpdateStatusText(FString::Printf(TEXT("Scanning... Found %d devices (%.1f%% complete)"),
+        UpdateStatusText(FString::Printf(TEXT("검색 중... %d개 장치 발견 (%.1f%% 완료)"),
             Status.DiscoveredDevices, Status.ProgressPercentage));
+    }
+}
+
+bool UPJLinkDiscoveryWidget::SaveResultsToCache()
+{
+    if (DiscoveryResults.Num() == 0)
+    {
+        // 저장할 결과가 없음
+        return false;
+    }
+
+    // JSON 객체 생성
+    TSharedPtr<FJsonObject> RootObject = MakeShareable(new FJsonObject);
+    TArray<TSharedPtr<FJsonValue>> ResultArray;
+
+    // 각 검색 결과를 JSON으로 변환
+    for (const FPJLinkDiscoveryResult& Result : DiscoveryResults)
+    {
+        TSharedPtr<FJsonObject> ResultObj = MakeShareable(new FJsonObject);
+        ResultObj->SetStringField(TEXT("IPAddress"), Result.IPAddress);
+        ResultObj->SetNumberField(TEXT("Port"), Result.Port);
+        ResultObj->SetStringField(TEXT("Name"), Result.Name);
+        ResultObj->SetStringField(TEXT("ModelName"), Result.ModelName);
+        ResultObj->SetNumberField(TEXT("DeviceClass"), static_cast<int32>(Result.DeviceClass));
+        ResultObj->SetBoolField(TEXT("RequiresAuthentication"), Result.bRequiresAuthentication);
+        ResultObj->SetStringField(TEXT("DiscoveryTime"), Result.DiscoveryTime.ToString());
+        ResultObj->SetNumberField(TEXT("ResponseTimeMs"), Result.ResponseTimeMs);
+
+        ResultArray.Add(MakeShareable(new FJsonValueObject(ResultObj)));
+    }
+
+    // 루트 객체에 배열 추가
+    RootObject->SetArrayField(TEXT("DiscoveryResults"), ResultArray);
+
+    // 최종 업데이트 시간 추가
+    LastCacheTime = FDateTime::Now();
+    RootObject->SetStringField(TEXT("LastCacheTime"), LastCacheTime.ToString());
+
+    // JSON 문자열로 변환
+    FString OutputString;
+    TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutputString);
+    FJsonSerializer::Serialize(RootObject.ToSharedRef(), Writer);
+
+    // 캐시 디렉토리 생성
+    FString FilePath = GetCacheFilePath();
+    FString DirectoryPath = FPaths::GetPath(FilePath);
+    IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
+
+    if (!PlatformFile.DirectoryExists(*DirectoryPath))
+    {
+        PlatformFile.CreateDirectoryTree(*DirectoryPath);
+    }
+
+    // 파일에 저장
+    bool bSuccess = FFileHelper::SaveStringToFile(OutputString, *FilePath);
+
+    if (bSuccess)
+    {
+        UpdateStatusText(FString::Printf(TEXT("검색 결과가 캐시에 저장되었습니다. (%d 장치)"), DiscoveryResults.Num()));
+    }
+    else
+    {
+        UpdateStatusText(FString::Printf(TEXT("검색 결과를 캐시에 저장하지 못했습니다.")));
+    }
+
+    return bSuccess;
+}
+
+bool UPJLinkDiscoveryWidget::LoadCachedResults()
+{
+    // 캐시 파일 경로
+    FString FilePath = GetCacheFilePath();
+
+    // 파일 존재 여부 확인
+    IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
+    if (!PlatformFile.FileExists(*FilePath))
+    {
+        UpdateStatusText(TEXT("캐시된 검색 결과가 없습니다."));
+        return false;
+    }
+
+    // 파일 읽기
+    FString JsonString;
+    if (!FFileHelper::LoadFileToString(JsonString, *FilePath))
+    {
+        UpdateStatusText(TEXT("캐시 파일을 읽을 수 없습니다."));
+        return false;
+    }
+
+    // JSON 파싱
+    TSharedPtr<FJsonObject> RootObject;
+    TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonString);
+    if (!FJsonSerializer::Deserialize(Reader, RootObject) || !RootObject.IsValid())
+    {
+        UpdateStatusText(TEXT("캐시 파일을 파싱할 수 없습니다."));
+        return false;
+    }
+
+    // 마지막 캐시 시간 가져오기
+    FString LastCacheTimeStr = RootObject->GetStringField(TEXT("LastCacheTime"));
+    FDateTime::Parse(LastCacheTimeStr, LastCacheTime);
+
+    // 검색 결과 배열 가져오기
+    TArray<TSharedPtr<FJsonValue>> ResultArray = RootObject->GetArrayField(TEXT("DiscoveryResults"));
+
+    // 기존 결과 초기화
+    DiscoveryResults.Empty();
+
+    // 각 결과 파싱
+    for (const auto& JsonValue : ResultArray)
+    {
+        TSharedPtr<FJsonObject> ResultObj = JsonValue->AsObject();
+        if (!ResultObj.IsValid())
+        {
+            continue;
+        }
+
+        FPJLinkDiscoveryResult Result;
+        Result.IPAddress = ResultObj->GetStringField(TEXT("IPAddress"));
+        Result.Port = ResultObj->GetNumberField(TEXT("Port"));
+        Result.Name = ResultObj->GetStringField(TEXT("Name"));
+        Result.ModelName = ResultObj->GetStringField(TEXT("ModelName"));
+        Result.DeviceClass = static_cast<EPJLinkClass>(ResultObj->GetNumberField(TEXT("DeviceClass")));
+        Result.bRequiresAuthentication = ResultObj->GetBoolField(TEXT("RequiresAuthentication"));
+
+        FString DiscoveryTimeStr = ResultObj->GetStringField(TEXT("DiscoveryTime"));
+        FDateTime::Parse(DiscoveryTimeStr, Result.DiscoveryTime);
+
+        Result.ResponseTimeMs = ResultObj->GetNumberField(TEXT("ResponseTimeMs"));
+
+        DiscoveryResults.Add(Result);
+    }
+
+    // UI 업데이트
+    UpdateResultsList(GetFilteredAndSortedResults());
+
+    FTimespan TimeSinceCache = FDateTime::Now() - LastCacheTime;
+    double HoursSinceCache = TimeSinceCache.GetTotalHours();
+
+    FString TimeMessage;
+    if (HoursSinceCache < 1.0)
+    {
+        int32 MinutesSinceCache = FMath::FloorToInt(TimeSinceCache.GetTotalMinutes());
+        TimeMessage = FString::Printf(TEXT("%d분 전"), MinutesSinceCache);
+    }
+    else if (HoursSinceCache < 24.0)
+    {
+        int32 HoursRounded = FMath::FloorToInt(HoursSinceCache);
+        TimeMessage = FString::Printf(TEXT("%d시간 전"), HoursRounded);
+    }
+    else
+    {
+        int32 DaysSinceCache = FMath::FloorToInt(HoursSinceCache / 24.0);
+        TimeMessage = FString::Printf(TEXT("%d일 전"), DaysSinceCache);
+    }
+
+    UpdateStatusText(FString::Printf(TEXT("캐시에서 %d개 장치를 불러왔습니다. (마지막 업데이트: %s)"),
+        DiscoveryResults.Num(), *TimeMessage));
+
+    return true;
+}
+
+FString UPJLinkDiscoveryWidget::GetCacheFilePath() const
+{
+    return FPaths::ProjectSavedDir() / TEXT("PJLink") / CacheFileName;
+}
+
+FDateTime UPJLinkDiscoveryWidget::GetLastCacheTime() const
+{
+    return LastCacheTime;
+}
+
+void UPJLinkDiscoveryWidget::ShowErrorMessage(const FString& ErrorMessage)
+{
+    if (OnShowMessage.IsBound())
+    {
+        OnShowMessage.Execute(ErrorMessage, ErrorColor);
+    }
+
+    // 콘솔에 오류 로그 출력
+    UE_LOG(LogTemp, Error, TEXT("[PJLink Discovery] %s"), *ErrorMessage);
+
+    // 자동 숨김 타이머 설정
+    SetupMessageTimer();
+}
+
+void UPJLinkDiscoveryWidget::ShowSuccessMessage(const FString& SuccessMessage)
+{
+    if (OnShowMessage.IsBound())
+    {
+        OnShowMessage.Execute(SuccessMessage, SuccessColor);
+    }
+
+    // 콘솔에 로그 출력
+    UE_LOG(LogTemp, Log, TEXT("[PJLink Discovery] %s"), *SuccessMessage);
+
+    // 자동 숨김 타이머 설정
+    SetupMessageTimer();
+}
+
+void UPJLinkDiscoveryWidget::ShowInfoMessage(const FString& InfoMessage)
+{
+    if (OnShowMessage.IsBound())
+    {
+        OnShowMessage.Execute(InfoMessage, InfoColor);
+    }
+
+    // 콘솔에 로그 출력
+    UE_LOG(LogTemp, Log, TEXT("[PJLink Discovery] %s"), *InfoMessage);
+
+    // 자동 숨김 타이머 설정
+    SetupMessageTimer();
+}
+
+void UPJLinkDiscoveryWidget::HideMessage()
+{
+    if (OnHideMessage.IsBound())
+    {
+        OnHideMessage.Execute();
+    }
+
+    // 타이머 취소
+    if (UWorld* World = GetWorld())
+    {
+        World->GetTimerManager().ClearTimer(MessageTimerHandle);
+    }
+}
+
+// private 함수 추가 (헤더에 선언도 필요)
+void UPJLinkDiscoveryWidget::SetupMessageTimer()
+{
+    // 마지막 메시지 시간 업데이트
+    LastMessageTime = GetWorld()->GetTimeSeconds();
+
+    // 기존 타이머 취소
+    if (UWorld* World = GetWorld())
+    {
+        World->GetTimerManager().ClearTimer(MessageTimerHandle);
+
+        // 새 타이머 설정
+        if (MessageAutoHideTime > 0.0f)
+        {
+            World->GetTimerManager().SetTimer(
+                MessageTimerHandle,
+                this,
+                &UPJLinkDiscoveryWidget::HideMessage,
+                MessageAutoHideTime,
+                false);
+        }
     }
 }

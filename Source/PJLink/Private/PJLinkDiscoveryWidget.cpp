@@ -363,8 +363,15 @@ void UPJLinkDiscoveryWidget::OnDeviceDiscovered(const FPJLinkDiscoveryResult& Di
         // 결과 추가
         DiscoveryResults.Add(DiscoveredDevice);
 
-        // 발견된 장치 인덱스 기록 (애니메이션을 위해)
+        // 마지막 발견 장치 인덱스 업데이트
         LastDiscoveredDeviceIndex = DiscoveryResults.Num() - 1;
+
+        // 장치 발견 효과 재생
+        DeviceFoundEffectTime = DeviceFoundEffectDuration;
+        ShowDeviceFoundEffect(LastDiscoveredDeviceIndex, FoundColor);
+
+        // 애니메이션 스피드 조정 (발견 장치 수에 따라 증가)
+        AnimationSpeedMultiplier = FMath::Min(3.0f, 1.0f + (DiscoveryResults.Num() * 0.1f));
 
         // 장치 발견 시 애니메이션 효과 재생
         if (bEnableAdvancedAnimations)
@@ -856,7 +863,6 @@ FString UPJLinkDiscoveryWidget::GetDiscoveryStateText() const
     }
 }
 
-// PJLinkDiscoveryWidget.cpp 파일의 SetDiscoveryState 함수 수정
 void UPJLinkDiscoveryWidget::SetDiscoveryState(EPJLinkDiscoveryState NewState)
 {
     if (CurrentDiscoveryState != NewState)
@@ -866,52 +872,55 @@ void UPJLinkDiscoveryWidget::SetDiscoveryState(EPJLinkDiscoveryState NewState)
         // 이벤트 호출
         OnDiscoveryStateChanged(NewState);
 
-        // 상태에 따라 UI 요소 제어
+        // 상태에 따른 애니메이션 처리
         switch (NewState)
         {
         case EPJLinkDiscoveryState::Searching:
-            // 검색 시작 - 애니메이션 시작
+            // 검색 시작 애니메이션
+            if (bEnableAdvancedAnimations)
+            {
+                PlaySearchButtonAnimation(true);
+                AnimationTime = 0.0f;
+                bIsPulseAnimationActive = true;
+            }
+
+            // 프로그레스 애니메이션 시작
             if (bEnableProgressAnimation)
             {
                 StartProgressAnimation();
             }
-
-            // 검색 버튼 애니메이션 재생
-            if (bEnableAdvancedAnimations)
-            {
-                PlaySearchButtonAnimation(true);
-                AnimationTime = 0.0f; // 애니메이션 시간 리셋
-            }
             break;
 
         case EPJLinkDiscoveryState::Completed:
-            // 검색 완료 - 애니메이션 중지
-            if (bEnableProgressAnimation)
-            {
-                StopProgressAnimation();
-            }
-
-            // 완료 애니메이션 재생
+            // 검색 완료 애니메이션
             if (bEnableAdvancedAnimations)
             {
                 PlaySearchButtonAnimation(false);
-                PlayCompletionAnimation(true, DiscoveryResults.Num());
+                PlayCompletionEffect(true, DiscoveryResults.Num());
+                bIsPulseAnimationActive = false;
+            }
+
+            // 프로그레스 애니메이션 중지
+            if (bEnableProgressAnimation)
+            {
+                StopProgressAnimation();
             }
             break;
 
         case EPJLinkDiscoveryState::Cancelled:
         case EPJLinkDiscoveryState::Failed:
-            // 검색 종료 - 애니메이션 중지
-            if (bEnableProgressAnimation)
-            {
-                StopProgressAnimation();
-            }
-
-            // 실패/취소 애니메이션 재생
+            // 취소/실패 애니메이션
             if (bEnableAdvancedAnimations)
             {
                 PlaySearchButtonAnimation(false);
-                PlayCompletionAnimation(false, DiscoveryResults.Num());
+                PlayCompletionEffect(false, DiscoveryResults.Num());
+                bIsPulseAnimationActive = false;
+            }
+
+            // 프로그레스 애니메이션 중지
+            if (bEnableProgressAnimation)
+            {
+                StopProgressAnimation();
             }
             break;
 
@@ -1154,7 +1163,6 @@ void UPJLinkDiscoveryWidget::PrepareResultsUpdate(const TArray<FPJLinkDiscoveryR
     UpdateResultsList(Results);
 }
 
-// PJLinkDiscoveryWidget.cpp 파일에 추가
 void UPJLinkDiscoveryWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
     Super::NativeTick(MyGeometry, InDeltaTime);
@@ -1162,22 +1170,27 @@ void UPJLinkDiscoveryWidget::NativeTick(const FGeometry& MyGeometry, float InDel
     // 애니메이션 시간 업데이트
     AnimationTime += InDeltaTime;
 
-    // 검색 중일 때만 애니메이션 업데이트
+    // 검색 중 상태일 때 애니메이션 업데이트
     if (CurrentDiscoveryState == EPJLinkDiscoveryState::Searching && bEnableAdvancedAnimations)
     {
-        // 검색 중 애니메이션 업데이트
-        UpdateProgressAnimation(AnimationTime * AnimationSpeedMultiplier);
+        // 펄스 애니메이션 시간 관리
+        PulseAnimationTime += InDeltaTime;
+        if (PulseAnimationTime >= PulseAnimationDuration)
+        {
+            PulseAnimationTime = 0.0f;
+        }
+
+        // 펄스 애니메이션 강도 (0.0 ~ 1.0)
+        float PulseIntensity = FMath::Sin(PulseAnimationTime / PulseAnimationDuration * PI * 2.0f) * 0.5f + 0.5f;
+
+        // 커스텀 애니메이션 업데이트 함수 호출
+        UpdateProgressAnimation(PulseIntensity * 100.0f);
     }
 
     // 장치 발견 효과 타이머 업데이트
     if (DeviceFoundEffectTime > 0.0f)
     {
         DeviceFoundEffectTime -= InDeltaTime;
-        if (DeviceFoundEffectTime <= 0.0f)
-        {
-            DeviceFoundEffectTime = 0.0f;
-            // 효과 종료 처리
-        }
     }
 }
 

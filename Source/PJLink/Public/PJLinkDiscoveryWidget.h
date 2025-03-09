@@ -264,6 +264,35 @@ public:
     // 애니메이션 업데이트를 위한 Tick 함수
     virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
+    // 애니메이션 설정
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery|Animation")
+    float PulseAnimationDuration = 1.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery|Animation")
+    float DeviceFoundEffectDuration = 2.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery|Animation")
+    FLinearColor SearchingColor = FLinearColor(0.1f, 0.5f, 1.0f, 1.0f);  // 검색 중 색상
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery|Animation")
+    FLinearColor FoundColor = FLinearColor(0.1f, 0.8f, 0.2f, 1.0f);      // 발견 색상
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery|Animation")
+    float CompletionAnimationDuration = 3.0f;
+
+    // 애니메이션 관련 블루프린트 이벤트
+    UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery|Animation")
+    void PlayPulseAnimation(UWidget* TargetWidget, const FLinearColor& PulseColor, float Duration);
+
+    UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery|Animation")
+    void StopPulseAnimation(UWidget* TargetWidget);
+
+    UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery|Animation")
+    void ShowDeviceFoundEffect(int32 DeviceIndex, const FLinearColor& EffectColor);
+
+    UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery|Animation")
+    void PlayCompletionEffect(bool bSuccess, int32 DeviceCount);
+
 protected:
     /**
      * 검색 완료 이벤트 처리
@@ -454,4 +483,9 @@ private:
 
     // 지연된 UI 업데이트 수행
     void PerformDeferredUIUpdate();
+
+    // 애니메이션 상태 변수
+    float PulseAnimationTime = 0.0f;
+    bool bIsPulseAnimationActive = false;
+    TArray<UWidget*> AnimatedWidgets;
 };

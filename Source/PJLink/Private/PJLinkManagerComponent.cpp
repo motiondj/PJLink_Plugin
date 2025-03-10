@@ -852,18 +852,6 @@ bool UPJLinkManagerComponent::GetGroupInfo(const FString& GroupName, FPJLinkProj
     return true;
 }
 
-bool UPJLinkManagerComponent::GetGroupInfo(const FString& GroupName, FPJLinkProjectorGroup& OutGroupInfo) const
-{
-    if (!GroupMap.Contains(GroupName))
-    {
-        PJLINK_LOG_WARNING(TEXT("Group not found: %s"), *GroupName);
-        return false;
-    }
-
-    OutGroupInfo = GroupMap[GroupName];
-    return true;
-}
-
 bool UPJLinkManagerComponent::RemoveProjectorFromAllGroups(UPJLinkComponent* ProjectorComponent)
 {
     if (!ProjectorComponent)

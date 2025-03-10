@@ -292,35 +292,6 @@ bool UPJLinkTests::TestStateMachine()
     return true;
 }
 
-bool UPJLinkTests::RunAllTests(const FPJLinkProjectorInfo& ProjectorInfo)
-{
-    PJLINK_LOG_INFO(TEXT("Starting all tests"));
-
-    bool bSuccess = true;
-
-    // 각 테스트 실행
-    bSuccess &= TestConnection(ProjectorInfo.IPAddress, ProjectorInfo.Port);
-    PJLINK_LOG_INFO(TEXT("Connection test result: %s"), bSuccess ? TEXT("Pass") : TEXT("Fail"));
-
-    bSuccess &= TestCommands(ProjectorInfo);
-    PJLINK_LOG_INFO(TEXT("Commands test result: %s"), bSuccess ? TEXT("Pass") : TEXT("Fail"));
-
-    bSuccess &= TestErrorRecovery(ProjectorInfo);
-    PJLINK_LOG_INFO(TEXT("Error recovery test result: %s"), bSuccess ? TEXT("Pass") : TEXT("Fail"));
-
-    bSuccess &= TestPresets();
-    PJLINK_LOG_INFO(TEXT("Presets test result: %s"), bSuccess ? TEXT("Pass") : TEXT("Fail"));
-
-    bSuccess &= TestStateMachine();
-    PJLINK_LOG_INFO(TEXT("State machine test result: %s"), bSuccess ? TEXT("Pass") : TEXT("Fail"));
-
-    // 이벤트 테스트는 블루프린트에서 실행
-    PJLINK_LOG_INFO(TEXT("Events test skipped - run in Blueprint"));
-
-    PJLINK_LOG_INFO(TEXT("All tests completed with result: %s"), bSuccess ? TEXT("PASS") : TEXT("FAIL"));
-    return bSuccess;
-}
-
 // PJLinkTests.cpp의 RunAllTests 함수 수정
 bool UPJLinkTests::RunAllTests(const FPJLinkProjectorInfo& ProjectorInfo)
 {

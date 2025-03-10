@@ -1099,118 +1099,6 @@ void UPJLinkNetworkManager::EmitError(EPJLinkErrorCode ErrorCode, const FString&
     }
 }
 
-bool UPJLinkNetworkManager::SendCommandWithTimeout(EPJLinkCommand Command, const FString& Parameter, float TimeoutSeconds)
-{
-    // 명령 전송 시간 기록
-    double SendTime = FPlatformTime::Seconds();
-
-    // 명령 트래킹 정보 기록
-    FScopeLock Lock(&CommandTrackingLock);
-    FPJLinkCommandInfo CommandInfo;
-    CommandInfo.Command = Command;
-    CommandInfo.Parameter = Parameter;
-    CommandInfo.SendTime = SendTime;
-    CommandInfo.TimeoutSeconds = TimeoutSeconds;
-    CommandInfo.bResponseReceived = false;
-
-    // 명령 트래킹 맵에 추가
-    PendingCommands.Add(Command, CommandInfo);
-
-    // 실제 명령 전송
-    bool bResult = SendCommand(Command, Parameter);
-
-    // 전송 실패 시 트래킹에서 제거
-    if (!bResult)
-    {
-        PendingCommands.Remove(Command);
-        return false;
-    }
-
-    // 타임아웃 타이머 설정
-    if (UWorld* World = GetWorld())
-    {
-        FTimerDelegate TimerDelegate;
-        TimerDelegate.BindUObject(this, &UPJLinkNetworkManager::HandleCommandTimeout, Command);
-
-        FTimerHandle& TimerHandle = CommandTimeoutHandles.FindOrAdd(Command);
-        World->GetTimerManager().SetTimer(TimerHandle, TimerDelegate, TimeoutSeconds, false);
-    }
-
-    return true;
-}
-
-void UPJLinkNetworkManager::HandleCommandTimeout(EPJLinkCommand Command)
-{
-    FScopeLock Lock(&CommandTrackingLock);
-
-    // 해당 명령이 아직 응답을 받지 못했는지 확인
-    if (FPJLinkCommandInfo* CommandInfo = PendingCommands.Find(Command))
-    {
-        if (!CommandInfo->bResponseReceived)
-        {
-            // 타임아웃 처리
-            PJLINK_LOG_WARNING(TEXT("Command timeout: %s after %.1f seconds"),
-                *GetCommandName(Command), CommandInfo->TimeoutSeconds);
-
-            // 오류 이벤트 발생
-            EmitError(EPJLinkErrorCode::Timeout,
-                FString::Printf(TEXT("Command timeout: %s"), *GetCommandName(Command)),
-                Command);
-
-            // 응답 큐에 타임아웃 항목 추가
-            FPJLinkResponseQueueItem Item(
-                Command,
-                EPJLinkResponseStatus::NoResponse,
-                TEXT("Command timed out"),
-                TWeakObjectPtr<UPJLinkNetworkManager>(this)
-            );
-            ResponseQueue.Enqueue(Item);
-        }
-
-        // 타임아웃 후 명령 정보 제거
-        PendingCommands.Remove(Command);
-    }
-
-    // 타이머 핸들 제거
-    CommandTimeoutHandles.Remove(Command);
-}
-
-FString UPJLinkNetworkManager::GenerateDiagnosticReport() const
-{
-    FString Report = TEXT("PJLink Network Manager Diagnostic Report\n");
-    Report += TEXT("==============================================\n\n");
-
-    Report += TEXT("1. Connection Diagnostic Data\n");
-    Report += TEXT("----------------------------\n");
-    Report += ConnectionDiagnosticData.GenerateReport();
-    Report += TEXT("\n\n");
-
-    Report += TEXT("2. Last Command Diagnostic Data\n");
-    Report += TEXT("------------------------------\n");
-    Report += LastCommandDiagnosticData.GenerateReport();
-    Report += TEXT("\n\n");
-
-    Report += TEXT("3. Current Status\n");
-    Report += TEXT("---------------\n");
-    Report += FString::Printf(TEXT("Connected: %s\n"), IsConnected() ? TEXT("Yes") : TEXT("No"));
-
-    // 프로젝터 정보 추가
-    FPJLinkProjectorInfo Info = GetProjectorInfo();
-    Report += FString::Printf(TEXT("Projector Name: %s\n"), *Info.Name);
-    Report += FString::Printf(TEXT("IP Address: %s\n"), *Info.IPAddress);
-    Report += FString::Printf(TEXT("Port: %d\n"), Info.Port);
-    Report += FString::Printf(TEXT("Power Status: %s\n"), *UEnum::GetValueAsString(Info.PowerStatus));
-    Report += FString::Printf(TEXT("Input Source: %s\n"), *UEnum::GetValueAsString(Info.CurrentInputSource));
-
-    // 오류 정보 추가
-    Report += TEXT("\n4. Last Error\n");
-    Report += TEXT("------------\n");
-    Report += FString::Printf(TEXT("Error Code: %s\n"), *UEnum::GetValueAsString(LastErrorCode));
-    Report += FString::Printf(TEXT("Error Message: %s\n"), *LastErrorMessage);
-
-    return Report;
-}
-
 // 소켓 생성 함수
 bool UPJLinkNetworkManager::CreateSocket()
 {
@@ -1558,7 +1446,102 @@ void UPJLinkNetworkManager::HandleCommandTimeout(EPJLinkCommand Command)
     }
 }
 
-// 가장 자세하고 완전한 버전의 AttemptReconnect() 함수만 유지합니다
+    // 연결 상태 확인
+    if (bConnected.load(std::memory_order_acquire))
+    {
+        PJLINK_CAPTURE_DIAGNOSTIC(ConnectionDiagnosticData,
+            TEXT("Already connected, canceling reconnect attempt"));
+        PJLINK_LOG_INFO(TEXT("Already connected, canceling reconnect attempt"));
+        ReconnectAttemptCount = 0;
+        return;
+    }
+
+    PJLINK_CAPTURE_DIAGNOSTIC(ConnectionDiagnosticData,
+        TEXT("Attempting to reconnect (attempt %d/%s)..."),
+        ReconnectAttemptCount,
+        MaxReconnectAttempts > 0 ? *FString::FromInt(MaxReconnectAttempts) : TEXT("∞"));
+
+    PJLINK_LOG_INFO(TEXT("Attempting to reconnect (attempt %d/%s)..."),
+        ReconnectAttemptCount,
+        MaxReconnectAttempts > 0 ? *FString::FromInt(MaxReconnectAttempts) : TEXT("∞"));
+
+    // 이전 소켓 정리 확인
+    {
+        FScopeLock SocketLock(&SocketCriticalSection);
+        if (Socket)
+        {
+            PJLINK_CAPTURE_DIAGNOSTIC(ConnectionDiagnosticData,
+                TEXT("Cleaning up existing socket before reconnect"));
+            PJLINK_LOG_VERBOSE(TEXT("Cleaning up existing socket before reconnect"));
+
+            ISocketSubsystem* SocketSubsystem = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM);
+            if (SocketSubsystem)
+            {
+                Socket->Close();
+                SocketSubsystem->DestroySocket(Socket);
+            }
+            Socket = nullptr;
+        }
+    }
+
+    // 이전 연결 정보로 재연결 시도
+    if (ConnectToProjector(LastProjectorInfo))
+    {
+        PJLINK_CAPTURE_DIAGNOSTIC(ConnectionDiagnosticData,
+            TEXT("Reconnection successful on attempt %d"), ReconnectAttemptCount);
+        PJLINK_LOG_INFO(TEXT("Reconnection successful on attempt %d"), ReconnectAttemptCount);
+        ReconnectAttemptCount = 0;
+
+        // 연결 성공 이벤트 발생
+        FPJLinkResponseQueueItem Item(
+            EPJLinkCommand::POWR,
+            EPJLinkResponseStatus::Success,
+            TEXT("Reconnection successful")
+        );
+        ResponseQueue.Enqueue(Item);
+    }
+    else
+    {
+        // 연결 실패 - 백오프 지연 적용 (지수적 백오프)
+        float BackoffDelay = ReconnectInterval * FMath::Min(1.0f, 1.0f + (ReconnectAttemptCount * 0.2f));
+
+        PJLINK_CAPTURE_DIAGNOSTIC(ConnectionDiagnosticData,
+            TEXT("Reconnection attempt %d failed. Will retry in %.1f seconds."),
+            ReconnectAttemptCount, BackoffDelay);
+
+        PJLINK_LOG_WARNING(TEXT("Reconnection attempt %d failed. Will retry in %.1f seconds."),
+            ReconnectAttemptCount, BackoffDelay);
+
+        // 실패 이벤트 발생
+        FPJLinkResponseQueueItem Item(
+            EPJLinkCommand::POWR,
+            EPJLinkResponseStatus::ProjectorFailure,
+            FString::Printf(TEXT("Reconnection attempt %d failed"), ReconnectAttemptCount)
+        );
+        ResponseQueue.Enqueue(Item);
+
+        if (bAutoReconnect)
+        {
+            if (UWorld* World = GetWorld())
+            {
+                World->GetTimerManager().SetTimer(
+                    ReconnectTimerHandle,
+                    this,
+                    &UPJLinkNetworkManager::AttemptReconnect,
+                    BackoffDelay,
+                    false);
+            }
+        }
+        else
+        {
+            PJLINK_CAPTURE_DIAGNOSTIC(ConnectionDiagnosticData,
+                TEXT("Reconnection attempt %d failed. Auto-reconnect is disabled."), ReconnectAttemptCount);
+            PJLINK_LOG_WARNING(TEXT("Reconnection attempt %d failed. Auto-reconnect is disabled."), ReconnectAttemptCount);
+            ReconnectAttemptCount = 0;
+        }
+    }
+}
+
 void UPJLinkNetworkManager::AttemptReconnect()
 {
     // 재연결 시도 횟수 증가
@@ -1588,16 +1571,6 @@ void UPJLinkNetworkManager::AttemptReconnect()
         );
         ResponseQueue.Enqueue(Item);
 
-        return;
-    }
-
-    // 연결 상태 확인
-    if (bConnected.load(std::memory_order_acquire))
-    {
-        PJLINK_CAPTURE_DIAGNOSTIC(ConnectionDiagnosticData,
-            TEXT("Already connected, canceling reconnect attempt"));
-        PJLINK_LOG_INFO(TEXT("Already connected, canceling reconnect attempt"));
-        ReconnectAttemptCount = 0;
         return;
     }
 

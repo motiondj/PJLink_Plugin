@@ -31,7 +31,7 @@ UPJLinkComponent::UPJLinkComponent()
     StateMachine = nullptr;
 }
 
-void UPJLinkComponent::BeginPlay()
+vvoid UPJLinkComponent::BeginPlay()
 {
     Super::BeginPlay();
 
@@ -40,17 +40,15 @@ void UPJLinkComponent::BeginPlay()
     // 기존 객체 정리 (중복 방지)
     if (NetworkManager)
     {
-        // 응답 이벤트 바인딩
-        NetworkManager->OnResponseReceived.AddDynamic(this, &UPJLinkComponent::HandleResponseReceived);
+        NetworkManager->OnResponseReceived.RemoveDynamic(this, &UPJLinkComponent::HandleResponseReceived);
+        NetworkManager->OnCommunicationLog.RemoveDynamic(this, &UPJLinkComponent::HandleCommunicationLog);
 
-        // 통신 로그 이벤트 바인딩
-        NetworkManager->OnCommunicationLog.AddDynamic(this, &UPJLinkComponent::HandleCommunicationLog);
+        if (NetworkManager->OnExtendedError.IsBound())
+        {
+            NetworkManager->OnExtendedError.RemoveDynamic(this, &UPJLinkComponent::HandleExtendedError);
+        }
 
-        // 확장된 오류 이벤트 바인딩
-        NetworkManager->OnExtendedError.AddDynamic(this, &UPJLinkComponent::HandleExtendedError);
-
-        // 디버깅 설정 전달
-        NetworkManager->bLogCommunication = bVerboseLogging;
+        NetworkManager = nullptr;
     }
 
     if (StateMachine)
@@ -69,6 +67,9 @@ void UPJLinkComponent::BeginPlay()
         // 통신 로그 이벤트 바인딩
         NetworkManager->OnCommunicationLog.AddDynamic(this, &UPJLinkComponent::HandleCommunicationLog);
 
+        // 확장된 오류 이벤트 바인딩
+        NetworkManager->OnExtendedError.AddDynamic(this, &UPJLinkComponent::HandleExtendedError);
+
         // 디버깅 설정 전달
         NetworkManager->bLogCommunication = bVerboseLogging;
     }
@@ -77,6 +78,7 @@ void UPJLinkComponent::BeginPlay()
         PJLINK_LOG_ERROR(TEXT("Failed to create NetworkManager for component %s"), *GetOwner()->GetName());
         return; // 생성 실패 시 초기화 중단
     }
+
 
     // 상태 머신 생성
     StateMachine = NewObject<UPJLinkStateMachine>(this, NAME_None, RF_Transient);

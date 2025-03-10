@@ -51,29 +51,6 @@ public:
         RETURN_QUICK_DECLARE_CYCLE_STAT(FScanWorker, STATGROUP_ThreadPoolAsyncTasks);
     }
 
-    FORCEINLINE TStatId GetStatId() const
-    {
-        RETURN_QUICK_DECLARE_CYCLE_STAT(FScanWorker, STATGROUP_ThreadPoolAsyncTasks);
-    }
-
-    // 생성자에서 플래그 초기화 추가
-    FScanWorker(...) : ... {
-        bIsCancelled.store(false, std::memory_order_release);
-    }
-
-    // 취소 메서드 추가
-    void Cancel() {
-        bIsCancelled.store(true, std::memory_order_release);
-    }
-
-    // DoWork 메서드 수정
-    void DoWork() {
-        if (Manager) {
-            // 정기적으로 취소 플래그 확인 추가
-            Manager->PerformRangeScan(DiscoveryID, StartIP, EndIP, TimeoutSeconds, &bIsCancelled);
-        }
-    }
-
 private:
     UPJLinkDiscoveryManager* Manager;
     FString DiscoveryID;
@@ -81,10 +58,6 @@ private:
     uint32 EndIP;
     float TimeoutSeconds;
     TAtomic<bool> bIsCancelled;
-
-    // 작업 취소 플래그
-    TAtomic<bool> bIsCancelled;
-
 };
 
 UPJLinkDiscoveryManager::UPJLinkDiscoveryManager()
@@ -954,7 +927,7 @@ void UPJLinkDiscoveryManager::PerformSubnetScan(const FString& DiscoveryID, uint
 
     // 서브넷 스캔 작업 생성
     FAutoDeleteAsyncTask<FScanWorker>* ScanTask = new FAutoDeleteAsyncTask<FScanWorker>(
-        this, DiscoveryID, NetworkAddress + 1, NetworkAddress + AddressCount, ActualTimeout);
+        this, DiscoveryID, FirstHostIP, LastHostIP, TimeoutSeconds);
 
     // 작업 저장 및 시작
     {
@@ -1030,9 +1003,6 @@ void UPJLinkDiscoveryManager::ScanIPAddress(const FString& DiscoveryID, const FS
             UpdateDiscoveryProgress(DiscoveryID, Status.ScannedAddresses, Status.DiscoveredDevices);
         }
     }
-
-    // 기존 코드...
-}
 
     ISocketSubsystem* SocketSubsystem = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM);
     if (!SocketSubsystem)

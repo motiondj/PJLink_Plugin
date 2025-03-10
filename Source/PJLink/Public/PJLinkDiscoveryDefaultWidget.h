@@ -91,23 +91,6 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|UI|Timer")
     float TimerCriticalThreshold = 300.0f; // 300초(5분) 이상이면 위험색으로 변경
 
-    // 타이머 색상 설정
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|UI|Timer")
-    FLinearColor TimerNormalColor = FLinearColor(0.0f, 0.7f, 1.0f, 1.0f); // 기본 파란색
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|UI|Timer")
-    FLinearColor TimerWarningColor = FLinearColor(1.0f, 0.7f, 0.0f, 1.0f); // 노란색
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|UI|Timer")
-    FLinearColor TimerCriticalColor = FLinearColor(1.0f, 0.3f, 0.3f, 1.0f); // 빨간색
-
-    // 타이머 임계값 설정 (초)
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|UI|Timer")
-    float TimerWarningThreshold = 30.0f; // 30초 이상이면 경고색
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|UI|Timer")
-    float TimerCriticalThreshold = 60.0f; // 60초 이상이면 위험색
-
     // ScannedAddressesText 변수 추가
     UPROPERTY(BlueprintReadWrite, meta = (BindWidget), Category = "PJLink|UI")
     class UTextBlock* ScannedAddressesText;

@@ -224,11 +224,6 @@ bool UPJLinkComponent::Connect()
         StateMachine->SetState(EPJLinkProjectorState::Connecting);
     }
 
-    if (StateMachine)
-    {
-        StateMachine->SetState(EPJLinkProjectorState::Connecting);
-    }
-
     if (NetworkManager)
     {
         bool bResult = NetworkManager->ConnectToProjector(ProjectorInfo, ConnectionTimeout);
@@ -273,12 +268,6 @@ bool UPJLinkComponent::Connect()
         return bResult;
     }
 
-    bool UPJLinkComponent::IsComponentValid() const
-    {
-        // 핵심 객체들이 유효한지 확인
-        return IsValid(this) && NetworkManager && StateMachine;
-    }
-
     PJLINK_LOG_ERROR(TEXT("NetworkManager is null, cannot connect"));
 
     if (StateMachine)
@@ -289,15 +278,13 @@ bool UPJLinkComponent::Connect()
     return false;
 }
 
-    PJLINK_LOG_ERROR(TEXT("NetworkManager is null, cannot connect"));
-
-    if (StateMachine)
-    {
-        StateMachine->SetState(EPJLinkProjectorState::Disconnected);
-    }
-
-    return false;
+// 이 함수는 그대로 유지하고, 위의 중복 부분을 제거합니다
+bool UPJLinkComponent::IsComponentValid() const
+{
+    // 핵심 객체들이 유효한지 확인
+    return IsValid(this) && NetworkManager && StateMachine;
 }
+
 
 void UPJLinkComponent::Disconnect()
 {
@@ -492,20 +479,6 @@ void UPJLinkComponent::HandleResponseReceived(EPJLinkCommand Command, EPJLinkRes
         }
         break;
     }
-}
-
-    // 입력 소스 변경 확인
-    if (Command == EPJLinkCommand::INPT && CurrentInfo.CurrentInputSource != PreviousInputSource)
-    {
-        UE_LOG(LogPJLinkComponent, Log, TEXT("Input source changed from %d to %d"),
-            static_cast<int32>(PreviousInputSource), static_cast<int32>(CurrentInfo.CurrentInputSource));
-
-        OnInputSourceChanged.Broadcast(PreviousInputSource, CurrentInfo.CurrentInputSource);
-        PreviousInputSource = CurrentInfo.CurrentInputSource;
-    }
-
-    // 기존 응답 이벤트 발생
-    OnResponseReceived.Broadcast(Command, Status, Response);
 }
 
 void UPJLinkComponent::CheckStatus()

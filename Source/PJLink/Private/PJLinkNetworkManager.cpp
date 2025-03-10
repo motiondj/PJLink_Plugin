@@ -411,7 +411,6 @@ bool UPJLinkNetworkManager::PowerOn()
 {
     return SendCommandWithTimeout(EPJLinkCommand::POWR, TEXT("1"), 10.0f); // 전원 켜기는 더 긴 타임아웃
 }
-}
 
 bool UPJLinkNetworkManager::PowerOff()
 {
@@ -619,10 +618,9 @@ FString UPJLinkNetworkManager::BuildCommandString(EPJLinkCommand Command, const 
     return CommandStr;
 }
 
+// 이 함수 구현만 유지하고 다른 중복된 구현은 제거합니다
 bool UPJLinkNetworkManager::ParseResponse(const FString& ResponseString, EPJLinkCommand& OutCommand, FString& OutParameter, EPJLinkResponseStatus& OutStatus)
 {
-    // PJLink 응답 형식: %응답클래스COMMAND=Parameter\r
-
     // 기본값 설정
     OutStatus = EPJLinkResponseStatus::Unknown;
 
@@ -734,8 +732,6 @@ bool UPJLinkNetworkManager::ParseResponse(const FString& ResponseString, EPJLink
 
     // 성공 응답
     OutStatus = EPJLinkResponseStatus::Success;
-
-    return true;
 
     // 응답이 성공적으로 파싱되었다면 타임아웃 취소
     if (OutStatus != EPJLinkResponseStatus::Unknown)
@@ -1023,36 +1019,6 @@ void UPJLinkNetworkManager::EmitError(EPJLinkErrorCode ErrorCode, const FString&
     ));
 }
 
-// PJLinkNetworkManager.cpp - 함수 추가
-void UPJLinkNetworkManager::AttemptReconnect()
-{
-    // 재연결 시도 횟수 증가
-    ReconnectAttemptCount++;
-
-    // 최대 시도 횟수 확인
-    if (MaxReconnectAttempts > 0 && ReconnectAttemptCount > MaxReconnectAttempts)
-    {
-        PJLINK_LOG_WARNING(TEXT("Maximum reconnect attempts (%d) reached. Giving up."), MaxReconnectAttempts);
-        EmitError(EPJLinkErrorCode::ConnectionFailed,
-            FString::Printf(TEXT("Failed to reconnect after %d attempts"), ReconnectAttemptCount - 1),
-            EPJLinkCommand::POWR);
-        ReconnectAttemptCount = 0;
-
-        // 연결 상태 최종 업데이트
-        bConnected.store(false, std::memory_order_release);
-
-        // 오류 상태 이벤트 발생
-        FPJLinkResponseQueueItem Item(
-            EPJLinkCommand::POWR,
-            EPJLinkResponseStatus::NoResponse,
-            TEXT("Reconnection attempts exhausted"),
-            TWeakObjectPtr<UPJLinkNetworkManager>(this)
-        );
-        ResponseQueue.Enqueue(Item);
-
-        return;
-    }
-
     // 연결 상태 확인
     if (bConnected.load(std::memory_order_acquire))
     {
@@ -1207,45 +1173,6 @@ void UPJLinkNetworkManager::HandleCommandTimeout(EPJLinkCommand Command)
 
     // 타이머 핸들 제거
     CommandTimeoutHandles.Remove(Command);
-}
-
-// 응답 처리 시 타임아웃 취소 로직 - ParseResponse 함수 내에 추가할 코드
-bool UPJLinkNetworkManager::ParseResponse(const FString& ResponseString, EPJLinkCommand& OutCommand, FString& OutParameter, EPJLinkResponseStatus& OutStatus)
-{
-    // 기존 파싱 로직...
-
-    // 응답이 성공적으로 파싱되었다면 타임아웃 취소
-    if (OutStatus != EPJLinkResponseStatus::Unknown)
-    {
-        FScopeLock Lock(&CommandTrackingLock);
-
-        // 해당 명령이 트래킹 중인지 확인
-        if (FPJLinkCommandInfo* CommandInfo = PendingCommands.Find(OutCommand))
-        {
-            // 응답 받음 표시
-            CommandInfo->bResponseReceived = true;
-
-            // 타임아웃 타이머 취소
-            if (FTimerHandle* TimerHandle = CommandTimeoutHandles.Find(OutCommand))
-            {
-                if (UWorld* World = GetWorld())
-                {
-                    World->GetTimerManager().ClearTimer(*TimerHandle);
-                }
-                CommandTimeoutHandles.Remove(OutCommand);
-            }
-
-            // 적절한 시간 내에 응답이 왔는지 확인
-            double ResponseTime = FPlatformTime::Seconds() - CommandInfo->SendTime;
-            PJLINK_LOG_VERBOSE(TEXT("Response received for %s in %.2f seconds"),
-                *GetCommandName(OutCommand), ResponseTime);
-
-            // 트래킹에서 제거
-            PendingCommands.Remove(OutCommand);
-        }
-    }
-
-    return (OutStatus != EPJLinkResponseStatus::Unknown);
 }
 
 FString UPJLinkNetworkManager::GenerateDiagnosticReport() const
@@ -1631,7 +1558,7 @@ void UPJLinkNetworkManager::HandleCommandTimeout(EPJLinkCommand Command)
     }
 }
 
-// PJLinkNetworkManager.cpp에 추가
+// 가장 자세하고 완전한 버전의 AttemptReconnect() 함수만 유지합니다
 void UPJLinkNetworkManager::AttemptReconnect()
 {
     // 재연결 시도 횟수 증가
@@ -1759,3 +1686,5 @@ void UPJLinkNetworkManager::AttemptReconnect()
         }
     }
 }
+
+    

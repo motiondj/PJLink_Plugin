@@ -6,18 +6,18 @@
 #include "PJLinkDiscoveryManager.h"
 #include "PJLinkTypes.h"
 
-// 정렬 옵션 열거형을 확장
+// 정렬 옵션 열거형
 UENUM(BlueprintType)
 enum class EPJLinkDiscoverySortOption : uint8
 {
     ByIPAddress UMETA(DisplayName = "IP 주소순"),
     ByName UMETA(DisplayName = "이름순"),
     ByResponseTime UMETA(DisplayName = "응답시간순"),
-    ByModelName UMETA(DisplayName = "모델명순"), // 추가
-    ByDiscoveryTime UMETA(DisplayName = "발견시간순") // 추가
+    ByModelName UMETA(DisplayName = "모델명순"),
+    ByDiscoveryTime UMETA(DisplayName = "발견시간순")
 };
 
-// 필터 옵션 열거형 추가
+// 필터 옵션 열거형
 UENUM(BlueprintType)
 enum class EPJLinkDiscoveryFilterOption : uint8
 {
@@ -54,6 +54,7 @@ public:
 
     virtual void NativeConstruct() override;
     virtual void NativeDestruct() override;
+    virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
     /**
      * 브로드캐스트 검색 시작
@@ -103,13 +104,6 @@ public:
     UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery")
     void SaveAllResultsAsGroup(const FString& GroupName);
 
-    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery")
-    void SetSortOption(EPJLinkDiscoverySortOption SortOption);
-
-    // 필터 텍스트 설정
-    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery")
-    void SetFilterText(const FString& InFilterText);
-
     // 정렬 옵션 설정
     UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery")
     void SetSortOption(EPJLinkDiscoverySortOption SortOption);
@@ -117,6 +111,10 @@ public:
     // 필터 텍스트 설정
     UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery")
     void SetFilterText(const FString& InFilterText);
+
+    // 필터 옵션 설정
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery")
+    void SetFilterOption(EPJLinkDiscoveryFilterOption FilterOption);
 
     // 정렬된/필터링된 결과 가져오기
     UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery")
@@ -127,8 +125,8 @@ public:
     bool HasValidResults() const;
 
     /**
- * 캐싱된 검색 결과 불러오기
- */
+     * 캐싱된 검색 결과 불러오기
+     */
     UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery")
     bool LoadCachedResults();
 
@@ -151,8 +149,8 @@ public:
     FDateTime GetLastCacheTime() const;
 
     /**
- * 오류 메시지 표시
- */
+     * 오류 메시지 표시
+     */
     UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery")
     void ShowErrorMessage(const FString& ErrorMessage);
 
@@ -178,18 +176,11 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery|UI")
     bool bEnableProgressAnimation = true;
 
-    // 진행 상황 애니메이션 속도 (초당 회전 수)
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery|UI", meta = (EditCondition = "bEnableProgressAnimation", ClampMin = "0.1", ClampMax = "5.0"))
-    float ProgressAnimationSpeed = 1.0f;
-
-    // 현재 검색 상태
-    UPROPERTY(BlueprintReadOnly, Category = "PJLink|Discovery|UI")
-    EPJLinkDiscoveryState CurrentDiscoveryState = EPJLinkDiscoveryState::Idle;
-
     // 애니메이션 관련 확장 속성
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery|Animation")
     bool bEnableAdvancedAnimations = true;
 
+    // 회전 애니메이션 속성
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery|Animation", meta = (EditCondition = "bEnableAdvancedAnimations"))
     float RotationAnimationSpeed = 1.0f;
 
@@ -237,14 +228,6 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery|UI")
     EPJLinkDiscoveryFilterOption CurrentFilterOption = EPJLinkDiscoveryFilterOption::All;
 
-    // 필터 옵션 설정
-    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery")
-    void SetFilterOption(EPJLinkDiscoveryFilterOption FilterOption);
-
-    // 정렬 옵션과 필터 옵션을 동시에 적용한 결과 가져오기
-    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery")
-    TArray<FPJLinkDiscoveryResult> GetFilteredAndSortedResults() const;
-
     // 검색 결과 요약 텍스트 가져오기
     UFUNCTION(BlueprintPure, Category = "PJLink|Discovery|UI")
     FString GetResultSummaryText() const;
@@ -260,9 +243,6 @@ public:
     // 장치 상태 색상 가져오기
     UFUNCTION(BlueprintPure, Category = "PJLink|Discovery|UI")
     FLinearColor GetDeviceStatusColor(const FPJLinkDiscoveryResult& Result) const;
-
-    // 애니메이션 업데이트를 위한 Tick 함수
-    virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
     // 애니메이션 설정
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery|Animation")
@@ -293,10 +273,7 @@ public:
     UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery|Animation")
     void PlayCompletionEffect(bool bSuccess, int32 DeviceCount);
 
-    // 회전 애니메이션 속성
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery|Animation")
-    float RotationAnimationSpeed = 1.0f;
-
+    // 회전 애니메이션 관련 추가 속성
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery|Animation")
     float RotationAnimationAcceleration = 2.0f;
 
@@ -306,17 +283,37 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery|Animation")
     float RotationAnimationDeceleration = 0.5f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery|Animation")
+    UPROPERTY(BlueprintReadOnly, Category = "PJLink|Discovery|Animation")
     float CurrentRotationAngle = 0.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery|Animation")
+    UPROPERTY(BlueprintReadOnly, Category = "PJLink|Discovery|Animation")
     bool bRotationAnimationActive = false;
 
-    // 회전 애니메이션 관련 함수 추가
+    // 타이머 색상 속성 (정리된 버전)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|UI|Timer")
+    FLinearColor TimerNormalColor = FLinearColor(0.2f, 0.6f, 1.0f, 1.0f); // 파란색
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|UI|Timer")
+    FLinearColor TimerWarningColor = FLinearColor(1.0f, 0.8f, 0.2f, 1.0f); // 노란색
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|UI|Timer")
+    FLinearColor TimerCriticalColor = FLinearColor(1.0f, 0.3f, 0.3f, 1.0f); // 빨간색
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|UI|Timer")
+    float TimerWarningThreshold = 30.0f; // 30초 이상이면 경고색
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|UI|Timer")
+    float TimerCriticalThreshold = 60.0f; // 60초 이상이면 위험색
+
+    // 현재 검색 상태
+    UPROPERTY(BlueprintReadOnly, Category = "PJLink|Discovery|UI")
+    EPJLinkDiscoveryState CurrentDiscoveryState = EPJLinkDiscoveryState::Idle;
+
+    // 회전 애니메이션 관련 함수
     UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery|Animation")
     void UpdateRotationAnimation(float DeltaTime);
 
-    // 기존 함수를 보완하는 확장 함수
+    // 애니메이션 속도 조절 함수
     UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery|Animation")
     void SetRotationAnimationSpeed(float Speed);
 
@@ -360,49 +357,49 @@ protected:
     UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery")
     void UpdateStatusText(const FString& StatusText);
 
+    /**
+     * 메시지 표시 이벤트
+     */
     UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery")
     void OnShowMessage(const FString& Message, const FLinearColor& Color);
 
+    /**
+     * 메시지 숨김 이벤트
+     */
     UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery")
     void OnHideMessage();
 
-    // 수정된 코드:
-/**
- * 진행 상황 애니메이션 시작
- * 블루프린트에서 구현하여 회전 또는 깜박임 애니메이션을 시작
- */
-    UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery|UI")
+    /**
+     * 진행 상황 애니메이션 시작
+     */
+    UFUNCTION(BlueprintNativeEvent, Category = "PJLink|Discovery|UI")
     void StartProgressAnimation();
 
     /**
      * 진행 상황 애니메이션 중지
-     * 블루프린트에서 구현하여 애니메이션을 중지
      */
-    UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery|UI")
+    UFUNCTION(BlueprintNativeEvent, Category = "PJLink|Discovery|UI")
     void StopProgressAnimation();
 
     /**
      * 진행 상황 애니메이션 업데이트
-     * 진행률에 따라 애니메이션 속도나 색상 등을 조절
      */
-    UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery|UI")
+    UFUNCTION(BlueprintNativeEvent, Category = "PJLink|Discovery|UI")
     void UpdateProgressAnimation(float ProgressPercentage);
 
     /**
      * 현재 스캔 중인 IP 주소 업데이트
-     * 블루프린트에서 구현하여 현재 스캔 중인 IP 주소 정보 표시
      */
     UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery|UI")
     void UpdateCurrentScanAddress(const FString& CurrentAddress);
 
     /**
      * 검색 소요 시간 업데이트
-     * 블루프린트에서 구현하여 현재 검색 소요 시간 표시
      */
     UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery|UI")
     void UpdateElapsedTime(const FString& ElapsedTimeString);
 
-    // 다음 속성 추가 (위젯의 private 영역 위에 추가)
+    // 검색 관련 상태 속성
     UPROPERTY(BlueprintReadOnly, Category = "PJLink|Discovery|UI")
     FString CurrentScanAddress;
 
@@ -435,8 +432,6 @@ protected:
     UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery|UI")
     void ShowNoResultsMessage(bool bIsSearching, bool bHasFilters);
 
-    void PrepareResultsUpdate(const TArray<FPJLinkDiscoveryResult>& Results);
-
 private:
     /**
      * 검색 매니저 생성
@@ -459,6 +454,7 @@ private:
     UPROPERTY()
     TArray<FPJLinkDiscoveryResult> DiscoveryResults;
 
+    // 정렬 옵션
     UPROPERTY()
     EPJLinkDiscoverySortOption CurrentSortOption = EPJLinkDiscoverySortOption::ByIPAddress;
 
@@ -495,7 +491,7 @@ private:
     // 메시지 자동 숨김 타이머 핸들
     FTimerHandle MessageTimerHandle;
 
-    // private 섹션에 다음 함수 선언 추가:
+    // 메시지 타이머 설정
     void SetupMessageTimer();
 
     // UI 업데이트 제한을 위한 타이머
@@ -513,6 +509,9 @@ private:
 
     // 지연된 UI 업데이트 수행
     void PerformDeferredUIUpdate();
+
+    // 결과 목록 업데이트 준비
+    void PrepareResultsUpdate(const TArray<FPJLinkDiscoveryResult>& Results);
 
     // 애니메이션 상태 변수
     float PulseAnimationTime = 0.0f;

@@ -321,140 +321,6 @@ bool UPJLinkTests::RunAllTests(const FPJLinkProjectorInfo& ProjectorInfo)
     return bSuccess;
 }
 
-bool UPJLinkTests::TestTimeoutHandling(const FPJLinkProjectorInfo& ProjectorInfo)
-{
-    PJLINK_LOG_INFO(TEXT("Starting timeout handling test for projector %s"), *ProjectorInfo.Name);
-
-    // 네트워크 매니저 생성
-    UPJLinkNetworkManager* NetworkManager = NewObject<UPJLinkNetworkManager>();
-    if (!NetworkManager)
-    {
-        PJLINK_LOG_ERROR(TEXT("Failed to create NetworkManager for test"));
-        return false;
-    }
-
-    // 테스트용 짧은 타임아웃 설정 (1초)
-    const float ShortTimeout = 1.0f;
-
-    // 연결 시도
-    bool bConnected = NetworkManager->ConnectToProjector(ProjectorInfo);
-    if (!bConnected)
-    {
-        PJLINK_LOG_ERROR(TEXT("Failed to connect to projector for timeout test"));
-        return false;
-    }
-
-    // 프로젝터 상태에 따라 테스트할 명령 선택
-    EPJLinkCommand TestCommand = EPJLinkCommand::POWR;
-    FString TestParam = TEXT("?"); // 잘못된 파라미터를 일부러 사용하여 오류 유도
-
-    // 타임아웃 테스트를 위한 명령 전송
-    PJLINK_LOG_INFO(TEXT("Sending command with intentionally invalid parameter to test timeout..."));
-    bool bCommandSent = NetworkManager->SendCommandWithTimeout(TestCommand, TestParam, ShortTimeout);
-
-    if (!bCommandSent)
-    {
-        PJLINK_LOG_ERROR(TEXT("Failed to send test command"));
-        NetworkManager->DisconnectFromProjector();
-        return false;
-    }
-
-    // 타임아웃 대기
-    PJLINK_LOG_INFO(TEXT("Waiting for timeout period (%.1f seconds)..."), ShortTimeout + 0.5f);
-    FPlatformProcess::Sleep(ShortTimeout + 0.5f);
-
-    // 타임아웃 후 오류 상태 확인
-    EPJLinkErrorCode LastErrorCode = NetworkManager->GetLastErrorCode();
-    FString LastErrorMessage = NetworkManager->GetLastErrorMessage();
-
-    bool bTimeoutDetected = (LastErrorCode == EPJLinkErrorCode::Timeout ||
-        LastErrorCode == EPJLinkErrorCode::CommandFailed);
-
-    if (bTimeoutDetected)
-    {
-        PJLINK_LOG_INFO(TEXT("Timeout successfully detected: %s"), *LastErrorMessage);
-    }
-    else
-    {
-        PJLINK_LOG_ERROR(TEXT("Timeout not properly detected. Error code: %d, Message: %s"),
-            static_cast<int32>(LastErrorCode), *LastErrorMessage);
-    }
-
-    // 다음 명령이 정상 처리되는지 확인
-    PJLINK_LOG_INFO(TEXT("Testing if next command works after timeout..."));
-    bool bStatusRequestOk = NetworkManager->RequestStatus();
-
-    if (bStatusRequestOk)
-    {
-        PJLINK_LOG_INFO(TEXT("Normal command works after timeout - test passed"));
-    }
-    else
-    {
-        PJLINK_LOG_ERROR(TEXT("Normal command failed after timeout - recovery issue"));
-    }
-
-    // 연결 해제
-    NetworkManager->DisconnectFromProjector();
-
-    return bTimeoutDetected && bStatusRequestOk;
-}
-
-bool UPJLinkTests::TestDiagnosticSystem(const FPJLinkProjectorInfo& ProjectorInfo)
-{
-    PJLINK_LOG_INFO(TEXT("Starting diagnostic system test"));
-
-    // 네트워크 매니저 생성
-    UPJLinkNetworkManager* NetworkManager = NewObject<UPJLinkNetworkManager>();
-    if (!NetworkManager)
-    {
-        PJLINK_LOG_ERROR(TEXT("Failed to create NetworkManager for test"));
-        return false;
-    }
-
-    // 다양한 작업 수행하여 진단 데이터 생성
-    NetworkManager->ConnectToProjector(ProjectorInfo);
-    NetworkManager->RequestStatus();
-    NetworkManager->PowerOn();
-
-    // 잘못된 명령으로 오류 생성
-    NetworkManager->SendCommand(EPJLinkCommand::INPT, TEXT("INVALID"));
-
-    // 진단 보고서 생성
-    FString DiagnosticReport = NetworkManager->GenerateDiagnosticReport();
-
-    // 보고서가 비어있지 않은지 확인
-    if (DiagnosticReport.IsEmpty())
-    {
-        PJLINK_LOG_ERROR(TEXT("Diagnostic report is empty"));
-        NetworkManager->DisconnectFromProjector();
-        return false;
-    }
-
-    // 보고서에 필수 섹션이 포함되어 있는지 확인
-    bool bHasConnectionData = DiagnosticReport.Contains(TEXT("Connection Diagnostic Data"));
-    bool bHasCommandData = DiagnosticReport.Contains(TEXT("Last Command Diagnostic Data"));
-    bool bHasStatusSection = DiagnosticReport.Contains(TEXT("Current Status"));
-    bool bHasErrorSection = DiagnosticReport.Contains(TEXT("Last Error"));
-
-    bool bAllSectionsPresent = bHasConnectionData && bHasCommandData &&
-        bHasStatusSection && bHasErrorSection;
-
-    if (bAllSectionsPresent)
-    {
-        PJLINK_LOG_INFO(TEXT("Diagnostic report contains all required sections"));
-        PJLINK_LOG_VERBOSE(TEXT("Diagnostic Report:\n%s"), *DiagnosticReport);
-    }
-    else
-    {
-        PJLINK_LOG_ERROR(TEXT("Diagnostic report is missing some sections"));
-    }
-
-    // 연결 해제
-    NetworkManager->DisconnectFromProjector();
-
-    return bAllSectionsPresent;
-}
-
 // PJLinkTests.cpp의 RunAllTests 함수 수정
 bool UPJLinkTests::RunAllTests(const FPJLinkProjectorInfo& ProjectorInfo)
 {
@@ -492,7 +358,7 @@ bool UPJLinkTests::RunAllTests(const FPJLinkProjectorInfo& ProjectorInfo)
     return bSuccess;
 }
 
-// PJLinkTests.cpp에 다음 함수 구현 추가
+// 더 자세한 테스트 함수만 유지하고 중복된 함수는 제거합니다
 bool UPJLinkTests::TestTimeoutHandling(const FPJLinkProjectorInfo& ProjectorInfo)
 {
     PJLINK_LOG_INFO(TEXT("Starting timeout handling test for projector %s"), *ProjectorInfo.Name);

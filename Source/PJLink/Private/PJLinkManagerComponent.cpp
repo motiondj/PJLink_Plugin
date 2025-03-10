@@ -328,18 +328,6 @@ bool UPJLinkManagerComponent::GetGroupInfo(const FString& GroupName, FPJLinkProj
     return true;
 }
 
-bool UPJLinkManagerComponent::GetGroupInfo(const FString& GroupName, FPJLinkProjectorGroup& OutGroupInfo) const
-{
-    if (!GroupMap.Contains(GroupName))
-    {
-        PJLINK_LOG_WARNING(TEXT("Group not found: %s"), *GroupName);
-        return false;
-    }
-
-    OutGroupInfo = GroupMap[GroupName];
-    return true;
-}
-
 TArray<UPJLinkComponent*> UPJLinkManagerComponent::GetProjectorsInGroup(const FString& GroupName) const
 {
     TArray<UPJLinkComponent*> Result;
@@ -494,16 +482,6 @@ bool UPJLinkManagerComponent::IsCommandCompleted(const FString& CommandID) const
     }
 
     return CommandResults[CommandID].HasAllResponded();
-}
-
-void UPJLinkManagerComponent::SetCommandTimeout(float TimeoutSeconds)
-{
-    CommandTimeoutSeconds = FMath::Max(1.0f, TimeoutSeconds);
-}
-
-float UPJLinkManagerComponent::GetCommandTimeout() const
-{
-    return CommandTimeoutSeconds;
 }
 
 void UPJLinkManagerComponent::SetCommandTimeout(float TimeoutSeconds)

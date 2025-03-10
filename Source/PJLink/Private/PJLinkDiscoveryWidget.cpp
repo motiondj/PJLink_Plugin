@@ -1311,3 +1311,23 @@ void UPJLinkDiscoveryWidget::StopProgressAnimation_Implementation()
         PlaySearchButtonAnimation(false);
     }
 }
+
+void UPJLinkDiscoveryWidget::UpdateProgressAnimation_Implementation(float ProgressPercentage)
+{
+    // 진행 상황에 따른 애니메이션 속도 및 색상 조정
+    if (bEnableAdvancedAnimations)
+    {
+        // 발견된 장치 수에 따라 애니메이션 스피드 조정
+        AnimationSpeedMultiplier = FMath::Min(3.0f, 1.0f + (ProgressPercentage / 100.0f * 2.0f));
+
+        // 진행률에 따른 색상 그라데이션 계산 (0% = 파란색, 100% = 녹색)
+        FLinearColor ProgressColor = FLinearColor::LerpUsingHSV(
+            SearchingColor,   // 시작 색상 (파란색)
+            FoundColor,       // 종료 색상 (녹색)
+            ProgressPercentage / 100.0f  // 진행률 비율
+        );
+
+        // 회전 애니메이션 업데이트 - 속도 조정만 수행하고 실제 회전은 UpdateRotationAnimation에서 처리
+        SetRotationAnimationSpeed(RotationAnimationSpeed * AnimationSpeedMultiplier);
+    }
+}

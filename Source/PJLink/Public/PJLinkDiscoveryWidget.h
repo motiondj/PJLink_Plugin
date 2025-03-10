@@ -293,6 +293,36 @@ public:
     UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery|Animation")
     void PlayCompletionEffect(bool bSuccess, int32 DeviceCount);
 
+    // 회전 애니메이션 속성
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery|Animation")
+    float RotationAnimationSpeed = 1.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery|Animation")
+    float RotationAnimationAcceleration = 2.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery|Animation")
+    float RotationAnimationMaxSpeed = 10.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery|Animation")
+    float RotationAnimationDeceleration = 0.5f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery|Animation")
+    float CurrentRotationAngle = 0.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery|Animation")
+    bool bRotationAnimationActive = false;
+
+    // 회전 애니메이션 관련 함수 추가
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery|Animation")
+    void UpdateRotationAnimation(float DeltaTime);
+
+    // 기존 함수를 보완하는 확장 함수
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery|Animation")
+    void SetRotationAnimationSpeed(float Speed);
+
+    UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery|Animation")
+    void ApplyRotationToImage(float Angle);
+
 protected:
     /**
      * 검색 완료 이벤트 처리

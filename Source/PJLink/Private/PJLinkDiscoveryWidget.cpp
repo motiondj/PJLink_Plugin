@@ -430,7 +430,6 @@ void UPJLinkDiscoveryWidget::OnDeviceDiscovered(const FPJLinkDiscoveryResult& Di
         }
     }
 }
-
 void UPJLinkDiscoveryWidget::OnDiscoveryProgressUpdated(const FPJLinkDiscoveryStatus& Status)
 {
     // 진행 상황 백분율 계산 - 보다 정확하고 부드러운 업데이트를 위해 수정
@@ -869,6 +868,26 @@ void UPJLinkDiscoveryWidget::SetDiscoveryState(EPJLinkDiscoveryState NewState)
     {
         CurrentDiscoveryState = NewState;
 
+        // 상태에 따라 회전 애니메이션 시작/중지
+        switch (NewState)
+        {
+        case EPJLinkDiscoveryState::Searching:
+            StartProgressAnimation();
+            break;
+
+        case EPJLinkDiscoveryState::Completed:
+        case EPJLinkDiscoveryState::Cancelled:
+        case EPJLinkDiscoveryState::Failed:
+        case EPJLinkDiscoveryState::Idle:
+            // 서서히 중지되도록 플래그만 변경
+            if (bRotationAnimationActive)
+            {
+                // 회전 속도 감속 시작 - 애니메이션 자체는 UpdateRotationAnimation에서 서서히 중지됨
+                SetRotationAnimationSpeed(RotationAnimationSpeed * 0.5f);
+            }
+            break;
+        }
+
         // 이벤트 호출
         OnDiscoveryStateChanged(NewState);
 
@@ -1173,6 +1192,9 @@ void UPJLinkDiscoveryWidget::NativeTick(const FGeometry& MyGeometry, float InDel
     // 검색 중 상태일 때 애니메이션 업데이트
     if (CurrentDiscoveryState == EPJLinkDiscoveryState::Searching && bEnableAdvancedAnimations)
     {
+        // 회전 애니메이션 업데이트
+        UpdateRotationAnimation(InDeltaTime);
+
         // 펄스 애니메이션 시간 관리
         PulseAnimationTime += InDeltaTime;
         if (PulseAnimationTime >= PulseAnimationDuration)
@@ -1201,4 +1223,91 @@ void UPJLinkDiscoveryWidget::UpdateCurrentScanAddress_Implementation(const FStri
 
     // 추가 애니메이션 효과를 위한 블루프린트 구현이 있을 수 있음
     // 블루프린트에서 이 함수를 오버라이드하여 추가 시각적 효과 구현 가능
+}
+
+void UPJLinkDiscoveryWidget::UpdateRotationAnimation(float DeltaTime)
+{
+    if (!bRotationAnimationActive)
+        return;
+
+    // 애니메이션 속도 계산 (발견된 장치 수와 진행 상황에 따라 동적 조정)
+    float TargetSpeed = RotationAnimationSpeed * AnimationSpeedMultiplier;
+
+    // 검색 진행 중에는 가속, 검색 완료 시 감속
+    if (CurrentDiscoveryState == EPJLinkDiscoveryState::Searching)
+    {
+        RotationAnimationSpeed = FMath::Min(
+            RotationAnimationSpeed + (RotationAnimationAcceleration * DeltaTime),
+            RotationAnimationMaxSpeed
+        );
+    }
+    else
+    {
+        RotationAnimationSpeed = FMath::Max(
+            RotationAnimationSpeed - (RotationAnimationDeceleration * DeltaTime),
+            0.0f
+        );
+
+        // 속도가 0에 가까워지면 애니메이션 중지
+        if (RotationAnimationSpeed < 0.1f)
+        {
+            bRotationAnimationActive = false;
+            return;
+        }
+    }
+
+    // 회전 각도 업데이트
+    CurrentRotationAngle += TargetSpeed * DeltaTime * 360.0f; // 초당 회전 각도
+
+    // 360도 초과 시 정규화
+    if (CurrentRotationAngle >= 360.0f)
+    {
+        CurrentRotationAngle -= 360.0f;
+    }
+
+    // 시각적 회전 적용 (블루프린트 이벤트)
+    ApplyRotationToImage(CurrentRotationAngle);
+}
+
+void UPJLinkDiscoveryWidget::SetRotationAnimationSpeed(float Speed)
+{
+    RotationAnimationSpeed = FMath::Clamp(Speed, 0.0f, RotationAnimationMaxSpeed);
+}
+
+void UPJLinkDiscoveryWidget::StartProgressAnimation_Implementation()
+{
+    // 회전 애니메이션 활성화
+    bRotationAnimationActive = true;
+    RotationAnimationSpeed = 1.0f; // 초기 속도
+    CurrentRotationAngle = 0.0f;   // 초기 각도
+
+    // ScanningAnimationImage 표시
+    if (ScanningAnimationImage)
+    {
+        ScanningAnimationImage->SetVisibility(ESlateVisibility::Visible);
+    }
+
+    // 블루프린트에서 추가 구현할 수 있도록 이벤트 호출
+    if (bEnableAdvancedAnimations)
+    {
+        PlaySearchButtonAnimation(true);
+    }
+}
+
+void UPJLinkDiscoveryWidget::StopProgressAnimation_Implementation()
+{
+    // 애니메이션 중지는 UpdateRotationAnimation에서 서서히 처리
+    // 여기서는 플래그만 해제
+
+    // ScanningAnimationImage 숨기기
+    if (ScanningAnimationImage)
+    {
+        ScanningAnimationImage->SetVisibility(ESlateVisibility::Hidden);
+    }
+
+    // 블루프린트에서 추가 구현할 수 있도록 이벤트 호출
+    if (bEnableAdvancedAnimations)
+    {
+        PlaySearchButtonAnimation(false);
+    }
 }

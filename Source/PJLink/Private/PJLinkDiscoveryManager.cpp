@@ -69,13 +69,23 @@ UPJLinkDiscoveryManager::UPJLinkDiscoveryManager()
 {
 }
 
-// PJLinkDiscoveryManager.cpp
 // ~UPJLinkDiscoveryManager 소멸자 전체 구현
-
 UPJLinkDiscoveryManager::~UPJLinkDiscoveryManager()
 {
     // 모든 검색 작업 취소 (CancelAllDiscoveries 호출)
     CancelAllDiscoveries();
+
+    // 추가 안전장치: 활성 작업 취소 확인
+    {
+        FScopeLock Lock(&DiscoveryLock);
+        if (!ActiveScanTasks.IsEmpty())
+        {
+            PJLINK_LOG_WARNING(TEXT("Active scan tasks still exist during destruction, forcing cleanup"));
+            // 락을 풀고 취소 처리를 별도로 수행
+            Lock.Unlock();
+            CancelAllDiscoveries();
+        }
+    }
 
     // 소켓 정리
     if (BroadcastSocket)
@@ -813,13 +823,24 @@ void UPJLinkDiscoveryManager::PerformRangeScan(const FString& DiscoveryID, uint3
 {
     // 함수 시작 부분에 취소 확인 헬퍼 함수 추가
     auto CheckCancellation = [&]() -> bool {
-        // 직접 취소 플래그 확인
+        // 취소 확인 주기 제한 (자주 확인하지 않도록)
+        static double LastCheckTime = 0.0;
+        double CurrentTime = FPlatformTime::Seconds();
+
+        // 마지막 체크 후 최소 50ms 간격을 두어 잦은 락 획득으로 인한 성능 저하 방지
+        if (CurrentTime - LastCheckTime < 0.05) {
+            return false;  // 너무 자주 체크하지 않음
+        }
+
+        LastCheckTime = CurrentTime;
+
+        // 직접 취소 플래그 확인 (락 없이 가능)
         if (CancellationFlag && CancellationFlag->load(std::memory_order_acquire)) {
             PJLINK_LOG_VERBOSE(TEXT("Range scan cancelled via external flag for discovery: %s"), *DiscoveryID);
             return true;
         }
 
-        // 기존 취소 확인 로직
+        // 상태 기반 취소 확인 (락 필요)
         FScopeLock Lock(&DiscoveryLock);
         bool bCancelled = DiscoveryStatuses.Contains(DiscoveryID) &&
             (DiscoveryStatuses[DiscoveryID].bIsComplete || DiscoveryStatuses[DiscoveryID].bWasCancelled);
@@ -831,10 +852,54 @@ void UPJLinkDiscoveryManager::PerformRangeScan(const FString& DiscoveryID, uint3
         return bCancelled;
         };
 
-    // 최대 IP 숫자 제한 (너무 큰 범위는 분할 처리)
+    // 병렬 처리를 위한 IP 분할 개선
     const uint32 MaxIPsPerBatch = 255;
+    const uint32 TotalIPCount = EndIP - StartIP + 1;
 
-    // 범위가 너무 크면 여러 작업으로 분할
+    // 병렬 처리할 스레드 수 결정 (범위가 충분히 클 경우)
+    int32 ThreadCount = FMath::Min(MaxConcurrentThreads,
+        FMath::DivideAndRoundUp((int32)TotalIPCount, (int32)MaxIPsPerBatch));
+
+    if (ThreadCount > 1 && TotalIPCount > MaxIPsPerBatch)
+    {
+        // 병렬 처리할 경우 각 스레드가 담당할 IP 범위 계산
+        uint32 IPsPerThread = TotalIPCount / ThreadCount;
+
+        // 작업 리스트 생성
+        TArray<FAutoDeleteAsyncTask<FScanWorker>*> ParallelTasks;
+
+        for (int32 i = 0; i < ThreadCount; i++)
+        {
+            uint32 ThreadStartIP = StartIP + (i * IPsPerThread);
+            uint32 ThreadEndIP = (i == ThreadCount - 1) ? EndIP : ThreadStartIP + IPsPerThread - 1;
+
+            // 작업 생성 및 시작
+            FAutoDeleteAsyncTask<FScanWorker>* ThreadTask =
+                new FAutoDeleteAsyncTask<FScanWorker>(this, DiscoveryID, ThreadStartIP, ThreadEndIP, TimeoutSeconds);
+
+            ParallelTasks.Add(ThreadTask);
+            ThreadTask->StartBackgroundTask();
+
+            PJLINK_LOG_VERBOSE(TEXT("Started parallel scan task %d/%d for IP range %s - %s"),
+                i + 1, ThreadCount, *Uint32ToIPString(ThreadStartIP), *Uint32ToIPString(ThreadEndIP));
+        }
+
+        // 작업들을 ActiveScanTasks에 저장 (공유 취소 기능을 위해)
+        {
+            FScopeLock Lock(&DiscoveryLock);
+            for (int32 i = 0; i < ParallelTasks.Num(); i++)
+            {
+                FString SubTaskID = FString::Printf(TEXT("%s_thread%d"), *DiscoveryID, i);
+                ActiveScanTasks.Add(SubTaskID, ParallelTasks[i]);
+            }
+        }
+
+        return; // 병렬 태스크가 스캔을 처리할 것임
+    }
+
+    // 아래는 단일 스레드 처리 (작은 범위일 경우)
+
+    // 최대 IP 숫자 제한 (너무 큰 범위는 분할 처리)
     if (EndIP - StartIP + 1 > MaxIPsPerBatch)
     {
         uint32 BatchCount = ((EndIP - StartIP) / MaxIPsPerBatch) + 1;
@@ -1051,7 +1116,21 @@ void UPJLinkDiscoveryManager::ScanIPAddress(const FString& DiscoveryID, const FS
         // EWOULDBLOCK은 비동기 연결 진행 중임을 의미
         if (LastError != SE_EWOULDBLOCK)
         {
-            // 연결 실패
+            // 연결 실패 - 오류 종류에 따른 세부 로깅 추가
+            FString ErrorString = SocketSubsystem->GetSocketError().ToString();
+            if (LastError == SE_ECONNREFUSED)
+            {
+                PJLINK_LOG_VERBOSE(TEXT("Connection refused to %s: %s"), *IPAddress, *ErrorString);
+            }
+            else if (LastError == SE_ENETUNREACH || LastError == SE_EHOSTUNREACH)
+            {
+                PJLINK_LOG_VERBOSE(TEXT("Host unreachable at %s: %s"), *IPAddress, *ErrorString);
+            }
+            else
+            {
+                PJLINK_LOG_VERBOSE(TEXT("Failed to connect to %s: %s (%d)"), *IPAddress, *ErrorString, (int32)LastError);
+            }
+
             SocketSubsystem->DestroySocket(Socket);
             return;
         }
@@ -1131,7 +1210,7 @@ void UPJLinkDiscoveryManager::ProcessDiscoveryResponse(const FString& DiscoveryI
     const FString& Response, int32 ResponseTimeMs)
 {
     // PJLink 응답인지 확인 및 로깅 추가
-    if (!Response.StartsWith(TEXT("%")) || Response.Len() < 7)
+    if (!Response.StartsWith(TEXT("%")) && !Response.StartsWith(TEXT("PJLINK")))
     {
         PJLINK_LOG_VERBOSE(TEXT("Received invalid response from %s: '%s' (not a PJLink response)"),
             *IPAddress, *Response);
@@ -1149,7 +1228,7 @@ void UPJLinkDiscoveryManager::ProcessDiscoveryResponse(const FString& DiscoveryI
     Result.DiscoveryTime = FDateTime::Now();
     Result.ResponseTimeMs = ResponseTimeMs;
 
-    // 클래스 정보 추출
+    // 응답에서 프로토콜 버전 및 장치 정보 파싱
     if (Response.Contains(TEXT("=1")))
     {
         Result.DeviceClass = EPJLinkClass::Class1;
@@ -1159,11 +1238,31 @@ void UPJLinkDiscoveryManager::ProcessDiscoveryResponse(const FString& DiscoveryI
         Result.DeviceClass = EPJLinkClass::Class2;
     }
 
+    // 추가 정보 파싱 - 응답에서 모델 이름이나 제조사 정보 추출 시도
+    TArray<FString> ResponseLines;
+    Response.ParseIntoArrayLines(ResponseLines, false);
+
+    for (const FString& Line : ResponseLines)
+    {
+        // NAME 정보가 응답에 포함된 경우
+        if (Line.StartsWith(TEXT("%1NAME=")))
+        {
+            Result.Name = Line.Mid(7).TrimEnd();
+        }
+        // INF1 (제조사) 정보가 포함된 경우
+        else if (Line.StartsWith(TEXT("%1INF1=")))
+        {
+            Result.Manufacturer = Line.Mid(7).TrimEnd();
+        }
+        // INF2 (모델명) 정보가 포함된 경우
+        else if (Line.StartsWith(TEXT("%1INF2=")))
+        {
+            Result.ModelName = Line.Mid(7).TrimEnd();
+        }
+    }
+
     // 인증 필요 여부 확인 (인증 챌린지가 있는지)
     Result.bRequiresAuthentication = Response.Contains(TEXT("PJLINK 1"));
-
-    // 추가 정보 요청 (NAME 명령 등)을 위해서는 별도의 연결 필요
-    // 여기서는 기본 검색 결과만 반환
 
     // 결과 저장
     bool bNewDevice = false;

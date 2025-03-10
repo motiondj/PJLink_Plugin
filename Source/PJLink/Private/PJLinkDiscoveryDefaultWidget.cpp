@@ -328,8 +328,87 @@ void UPJLinkDiscoveryDefaultWidget::StopProgressAnimation_Implementation()
 
 void UPJLinkDiscoveryDefaultWidget::UpdateProgressAnimation_Implementation(float ProgressPercentage)
 {
-    // 진행 상태에 따른 애니메이션 업데이트
-    // 이 부분은 블루프린트에서 구현하거나 여기서 직접 구현할 수 있음
+    // 진행 상황에 따른 애니메이션 속도 조정
+    if (ScanningAnimationImage)
+    {
+        // 애니메이션 속도를 진행률 및 발견된 장치 수에 따라 조정
+        float SpeedMultiplier = FMath::Min(3.0f, 1.0f + (ProgressPercentage / 100.0f));
+        AnimationSpeedMultiplier = SpeedMultiplier;
+
+        // 진행률에 따른 색상 그라데이션 계산 (0% = 파란색, 100% = 녹색)
+        FLinearColor AnimColor = FLinearColor::LerpUsingHSV(
+            FLinearColor(0.2f, 0.5f, 1.0f, 1.0f), // 시작 색상 (파란색)
+            FLinearColor(0.2f, 0.8f, 0.4f, 1.0f), // 종료 색상 (녹색)
+            ProgressPercentage / 100.0f           // 진행률 비율
+        );
+
+        // 이미지 색상 적용 (이미지가 ColorAndOpacity 속성을 지원하는 경우)
+        ScanningAnimationImage->SetColorAndOpacity(AnimColor);
+    }
+}
+
+// 장치 발견 효과 함수 추가
+void UPJLinkDiscoveryDefaultWidget::ShowDeviceFoundEffect_Implementation(int32 DeviceIndex, const FLinearColor& EffectColor)
+{
+    // ResultsScrollBox의 자식 위젯 중에서 해당 인덱스의 항목 찾기
+    if (ResultsScrollBox && DeviceIndex >= 0 && DeviceIndex < ResultsScrollBox->GetChildrenCount())
+    {
+        UWidget* ItemWidget = ResultsScrollBox->GetChildAt(DeviceIndex);
+        if (ItemWidget)
+        {
+            // 강조 효과 적용 - 배경색 변경 또는 애니메이션 적용
+            // 블루프린트에서 구현을 위해 이벤트 발생
+            PlayDeviceFoundAnimation(ItemWidget, EffectColor);
+        }
+    }
+}
+
+// 펄스 애니메이션 효과 함수 추가
+void UPJLinkDiscoveryDefaultWidget::PlayDeviceFoundAnimation_Implementation(UWidget* TargetWidget, const FLinearColor& EffectColor)
+{
+    // 블루프린트에서 구현될 함수의 스텁
+    // C++에서는 기본 동작 제공 - 블루프린트에서 더 복잡한 애니메이션 구현 가능
+    if (TargetWidget)
+    {
+        // 위젯이 Border인 경우 배경색 변경 시도
+        UBorder* Border = Cast<UBorder>(TargetWidget);
+        if (Border)
+        {
+            Border->SetBrushColor(EffectColor);
+
+            // 원래 색상으로 돌아가는 타이머 설정
+            FTimerHandle ResetColorTimerHandle;
+            FTimerDelegate ResetColorDelegate;
+
+            ResetColorDelegate.BindLambda([Border]()
+                {
+                    Border->SetBrushColor(FLinearColor(0.1f, 0.1f, 0.1f, 0.6f)); // 기본 색상으로 복원
+                });
+
+            GetWorld()->GetTimerManager().SetTimer(
+                ResetColorTimerHandle,
+                ResetColorDelegate,
+                0.5f, // 0.5초 후 원래 색상으로 복원
+                false
+            );
+        }
+    }
+}
+
+// 회전 애니메이션 관련 함수 추가
+void UPJLinkDiscoveryDefaultWidget::ApplyRotationToImage(float Angle)
+{
+    if (ScanningAnimationImage)
+    {
+        // 이미지 회전 설정
+        // 언리얼 엔진에서는 회전을 래디안 단위로 설정하므로 변환 필요
+        float RadianAngle = FMath::DegreesToRadians(Angle);
+
+        // RenderTransform을 사용하여 회전 적용
+        FWidgetTransform Transform = ScanningAnimationImage->RenderTransform;
+        Transform.Angle = RadianAngle;
+        ScanningAnimationImage->SetRenderTransform(Transform);
+    }
 }
 
 void UPJLinkDiscoveryDefaultWidget::OnDiscoveryStateChanged_Implementation(EPJLinkDiscoveryState NewState)
@@ -683,3 +762,94 @@ void UPJLinkDiscoveryDefaultWidget::ClearResultsPanel()
         ResultsScrollBox->ClearChildren();
     }
 }
+
+void UPJLinkDiscoveryDefaultWidget::UpdateProgressAnimation_Implementation(float ProgressPercentage)
+{
+    // 진행 상황에 따른 애니메이션 속도 및 색상 조정
+    if (ScanningAnimationImage)
+    {
+        // 애니메이션 속도를 진행률 및 발견된 장치 수에 따라 조정
+        float SpeedMultiplier = FMath::Min(3.0f, 1.0f + (ProgressPercentage / 100.0f));
+        AnimationSpeedMultiplier = SpeedMultiplier;
+
+        // 진행률에 따른 색상 그라데이션 계산 (0% = 파란색, 100% = 녹색)
+        FLinearColor AnimColor = FLinearColor::LerpUsingHSV(
+            FLinearColor(0.2f, 0.5f, 1.0f, 1.0f), // 시작 색상 (파란색)
+            FLinearColor(0.2f, 0.8f, 0.4f, 1.0f), // 종료 색상 (녹색)
+            ProgressPercentage / 100.0f           // 진행률 비율
+        );
+
+        // 이미지에 색상 적용
+        ScanningAnimationImage->SetColorAndOpacity(AnimColor);
+
+        // 이미지 크기도 진행 상황에 따라 약간 변화 (펄스 효과)
+        FVector2D BaseSize(32.0f, 32.0f); // 기본 크기 
+        float PulseValue = FMath::Sin(GetWorld()->GetTimeSeconds() * 4.0f) * 0.1f + 1.0f;
+        ScanningAnimationImage->SetDesiredSizeOverride(BaseSize * PulseValue * SpeedMultiplier);
+
+        // 회전 속도 업데이트 (회전은 AnimationSpeedMultiplier에 따라 NativeTick에서 처리)
+    }
+}
+
+// 스캐닝 시작 함수
+void UPJLinkDiscoveryDefaultWidget::StartProgressAnimation_Implementation()
+{
+    // 애니메이션 이미지 초기화 및 표시
+    if (ScanningAnimationImage)
+    {
+        // 이미지 표시
+        ScanningAnimationImage->SetVisibility(ESlateVisibility::Visible);
+
+        // 초기 색상 설정
+        ScanningAnimationImage->SetColorAndOpacity(FLinearColor(0.2f, 0.5f, 1.0f, 1.0f));
+
+        // 애니메이션 속도 초기화
+        AnimationSpeedMultiplier = 1.0f;
+    }
+
+    if (SearchProgressBar)
+    {
+        // 프로그레스 바 초기화
+        SearchProgressBar->SetPercent(0.0f);
+        SearchProgressBar->SetVisibility(ESlateVisibility::Visible);
+    }
+
+    // 상태 텍스트 업데이트
+    if (StatusTextBlock)
+    {
+        StatusTextBlock->SetText(FText::FromString(TEXT("검색 중...")));
+        StatusTextBlock->SetColorAndOpacity(FSlateColor(FLinearColor(0.2f, 0.6f, 1.0f, 1.0f)));
+    }
+
+    // 검색 버튼 상태 업데이트
+    UpdateButtonStates();
+}
+
+// 스캐닝 중지 함수
+void UPJLinkDiscoveryDefaultWidget::StopProgressAnimation_Implementation()
+{
+    // 애니메이션 이미지 천천히 사라지게 설정 (서서히 투명해지는 효과)
+    if (ScanningAnimationImage)
+    {
+        // 즉시 숨기지 않고 서서히 투명해지는 효과를 위해 바로 숨기지 않음
+        // 실제 숨김 처리는 FadeOutAnimation 블루프린트에서 처리
+        FadeOutScanningAnimation();
+    }
+
+    // 버튼 상태 업데이트
+    UpdateButtonStates();
+}
+
+// 장치 발견 효과 함수 (블루프린트에서 호출할 함수 템플릿)
+void UPJLinkDiscoveryDefaultWidget::ShowDeviceFoundEffect_Implementation(int32 DeviceIndex, const FLinearColor& EffectColor)
+{
+    // 블루프린트에서 구현: 발견된 장치에 시각적 효과 적용
+}
+
+// FadeOutScanningAnimation 함수 - 블루프린트에서 구현할 기능을 위한 템플릿
+UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery|Animation")
+void UPJLinkDiscoveryDefaultWidget::FadeOutScanningAnimation();
+
+// PlayDeviceFoundAnimation 함수 - 블루프린트에서 구현할 기능을 위한 템플릿
+UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery|Animation")
+void UPJLinkDiscoveryDefaultWidget::PlayDeviceFoundAnimation(UWidget* TargetWidget, const FLinearColor& EffectColor);

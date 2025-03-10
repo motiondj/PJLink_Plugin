@@ -1225,17 +1225,16 @@ void UPJLinkDiscoveryWidget::UpdateCurrentScanAddress_Implementation(const FStri
     // 블루프린트에서 이 함수를 오버라이드하여 추가 시각적 효과 구현 가능
 }
 
+// 회전 애니메이션 함수 개선
 void UPJLinkDiscoveryWidget::UpdateRotationAnimation(float DeltaTime)
 {
     if (!bRotationAnimationActive)
         return;
 
-    // 애니메이션 속도 계산 (발견된 장치 수와 진행 상황에 따라 동적 조정)
-    float TargetSpeed = RotationAnimationSpeed * AnimationSpeedMultiplier;
-
-    // 검색 진행 중에는 가속, 검색 완료 시 감속
+    // 검색 상태에 따른 속도 조정
     if (CurrentDiscoveryState == EPJLinkDiscoveryState::Searching)
     {
+        // 가속
         RotationAnimationSpeed = FMath::Min(
             RotationAnimationSpeed + (RotationAnimationAcceleration * DeltaTime),
             RotationAnimationMaxSpeed
@@ -1243,6 +1242,7 @@ void UPJLinkDiscoveryWidget::UpdateRotationAnimation(float DeltaTime)
     }
     else
     {
+        // 감속
         RotationAnimationSpeed = FMath::Max(
             RotationAnimationSpeed - (RotationAnimationDeceleration * DeltaTime),
             0.0f
@@ -1256,6 +1256,9 @@ void UPJLinkDiscoveryWidget::UpdateRotationAnimation(float DeltaTime)
         }
     }
 
+    // 애니메이션 속도 계산 (발견된 장치 수와 진행 상황에 따라 동적 조정)
+    float TargetSpeed = RotationAnimationSpeed * AnimationSpeedMultiplier;
+
     // 회전 각도 업데이트
     CurrentRotationAngle += TargetSpeed * DeltaTime * 360.0f; // 초당 회전 각도
 
@@ -1265,8 +1268,56 @@ void UPJLinkDiscoveryWidget::UpdateRotationAnimation(float DeltaTime)
         CurrentRotationAngle -= 360.0f;
     }
 
-    // 시각적 회전 적용 (블루프린트 이벤트)
+    // 시각적 회전 적용 (블루프린트에서 구현)
     ApplyRotationToImage(CurrentRotationAngle);
+}
+
+// 장치 발견 효과 함수 개선
+void UPJLinkDiscoveryWidget::ShowDeviceFoundEffect(int32 DeviceIndex, const FLinearColor& EffectColor)
+{
+    // 발견된 장치에 시각적 효과 적용
+    if (DeviceIndex >= 0)
+    {
+        // 효과 시간 설정
+        DeviceFoundEffectTime = DeviceFoundEffectDuration;
+
+        // 효과 색상 설정 - 기본 녹색에서 장치 발견 수에 따라 더 밝은 색상으로 변경
+        FLinearColor EnhancedColor = EffectColor;
+        int32 DeviceCount = DiscoveryResults.Num();
+
+        if (DeviceCount > 5)
+        {
+            // 발견된 장치가 많을수록 더 밝은 색상 사용
+            float BrightnessBoost = FMath::Min(0.3f, DeviceCount * 0.02f);
+            EnhancedColor.R += BrightnessBoost;
+            EnhancedColor.G += BrightnessBoost;
+            EnhancedColor.B += BrightnessBoost;
+            EnhancedColor = EnhancedColor.GetClamped(); // 값 제한 (0-1)
+        }
+
+        // 블루프린트 이벤트 호출
+        PlayDeviceFoundEffect(DeviceIndex);
+    }
+}
+
+// 완료 효과 함수 개선
+void UPJLinkDiscoveryWidget::PlayCompletionEffect(bool bSuccess, int32 DeviceCount)
+{
+    // 검색 완료 효과 설정
+    FLinearColor CompletionColor = bSuccess ?
+        FLinearColor(0.2f, 0.8f, 0.2f, 1.0f) : // 성공 색상 (녹색)
+        FLinearColor(0.8f, 0.2f, 0.2f, 1.0f);  // 실패 색상 (빨간색)
+
+    // 발견된 장치 수에 따라 효과 강도 조정
+    float EffectIntensity = FMath::Min(1.0f, 0.2f + (DeviceCount * 0.05f));
+
+    // 블루프린트 이벤트 호출을 위한 준비
+    CompletionAnimationDuration = bSuccess ?
+        FMath::Max(2.0f, FMath::Min(5.0f, DeviceCount * 0.2f)) : // 성공 시 장치 수에 따라 지속 시간 조정
+        2.0f; // 실패 시 짧은 지속 시간
+
+    // 블루프린트 이벤트 호출
+    PlayCompletionAnimation(bSuccess);
 }
 
 void UPJLinkDiscoveryWidget::SetRotationAnimationSpeed(float Speed)

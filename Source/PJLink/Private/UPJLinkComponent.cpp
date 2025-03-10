@@ -1013,3 +1013,81 @@ FString UPJLinkComponent::GenerateDiagnosticReport() const
 
     return Report;
 }
+
+// 확장 컨트롤 패널 표시/숨김 토글
+void UPJLinkDiscoveryWidget::ToggleExtendedControlPanel()
+{
+    bShowExtendedControlPanel = !bShowExtendedControlPanel;
+
+    // 패널 가시성 업데이트
+    UpdateExtendedControlPanelVisibility();
+
+    // 버튼 상태 업데이트
+    if (ExtendedControlsToggleButton)
+    {
+        if (bShowExtendedControlPanel)
+        {
+            // 버튼 텍스트를 "간단히 보기"로 변경
+            if (ExtendedControlsToggleText)
+            {
+                ExtendedControlsToggleText->SetText(FText::FromString(TEXT("간단히 보기")));
+            }
+        }
+        else
+        {
+            // 버튼 텍스트를 "확장 제어판"으로 변경
+            if (ExtendedControlsToggleText)
+            {
+                ExtendedControlsToggleText->SetText(FText::FromString(TEXT("확장 제어판")));
+            }
+        }
+    }
+}
+
+// 확장 컨트롤 패널 가시성 업데이트
+void UPJLinkDiscoveryWidget::UpdateExtendedControlPanelVisibility_Implementation()
+{
+    // 블루프린트에서 구현할 수 있도록 함
+    // 기본 구현은 비어 있음
+}
+
+// 선택된 장치에 대한 일괄 작업 UI
+void UPJLinkDiscoveryWidget::ShowBatchOperationUI_Implementation(EPJLinkBatchOperation Operation)
+{
+    // 블루프린트에서 구현할 수 있도록 함
+    // 기본 구현은 비어 있음
+}
+
+// 일괄 연결 작업 UI
+void UPJLinkDiscoveryWidget::ShowBatchConnectUI()
+{
+    ShowBatchOperationUI(EPJLinkBatchOperation::Connect);
+}
+
+// 일괄 프리셋 저장 작업 UI
+void UPJLinkDiscoveryWidget::ShowBatchSaveAsPresetsUI()
+{
+    ShowBatchOperationUI(EPJLinkBatchOperation::SaveAsPresets);
+}
+
+// 일괄 그룹 추가 작업 UI
+void UPJLinkDiscoveryWidget::ShowBatchAddToGroupUI()
+{
+    ShowBatchOperationUI(EPJLinkBatchOperation::AddToGroup);
+}
+
+// 장치 세부 정보 확장 패널
+void UPJLinkDiscoveryWidget::ExpandDeviceDetails(bool bExpand)
+{
+    bExpandedDeviceDetails = bExpand;
+
+    // 세부 정보 패널 크기 업데이트
+    UpdateDetailPanelSize();
+}
+
+// 세부 정보 패널 크기 업데이트
+void UPJLinkDiscoveryWidget::UpdateDetailPanelSize_Implementation()
+{
+    // 블루프린트에서 구현할 수 있도록 함
+    // 기본 구현은 비어 있음
+}

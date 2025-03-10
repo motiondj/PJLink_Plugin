@@ -39,6 +39,19 @@ enum class EPJLinkDiscoveryState : uint8
     Failed UMETA(DisplayName = "실패")
 };
 
+// 일괄 작업 종류 정의
+UENUM(BlueprintType)
+enum class EPJLinkBatchOperation : uint8
+{
+    Connect UMETA(DisplayName = "연결"),
+    SaveAsPresets UMETA(DisplayName = "프리셋으로 저장"),
+    AddToGroup UMETA(DisplayName = "그룹에 추가")
+};
+
+// 장치 선택 변경 델리게이트
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FPJLinkDeviceSelectionChangedDelegate,
+    const TArray<int32>&, SelectedIndices);
+
 #include "PJLinkDiscoveryWidget.generated.h"
 
 /**
@@ -320,6 +333,124 @@ public:
     UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery|Animation")
     void ApplyRotationToImage(float Angle);
 
+    // 선택된 장치 관리 함수
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery|Selection")
+    void ManageSelectedDevice();
+
+    // 선택된 장치에 연결
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery|Selection")
+    bool ConnectToSelectedDevice();
+
+    // 선택된 장치 강조 표시
+    UFUNCTION(BlueprintNativeEvent, Category = "PJLink|Discovery|Selection")
+    void HighlightSelectedDevice(int32 DeviceIndex);
+
+    // 선택된 장치를 프리셋으로 저장
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery|Selection")
+    bool SaveSelectedDeviceAsPreset(const FString& PresetName = TEXT(""));
+
+    // 선택된 장치를 그룹에 추가
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery|Selection")
+    bool AddSelectedDeviceToGroup(const FString& GroupName = TEXT(""));
+
+    // 선택된 장치 상세 정보 보기
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery|Selection")
+    void ShowSelectedDeviceDetails();
+
+    // 다중 선택 관련 함수들
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery|Selection")
+    TArray<int32> GetSelectedDeviceIndices() const;
+
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery|Selection")
+    void ToggleDeviceSelection(int32 DeviceIndex);
+
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery|Selection")
+    void SelectAllDevices();
+
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery|Selection")
+    void AddToSelection(int32 DeviceIndex);
+
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery|Selection")
+    void ClearSelection();
+
+    // 선택된 장치들에 대한 일괄 작업
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery|BatchOperation")
+    bool ProcessSelectedDevices(EPJLinkBatchOperation Operation, const FString& Parameter = TEXT(""));
+
+    // 다중 선택 여부 설정
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery|Selection")
+    bool bSingleSelectionMode = true;
+
+    // 선택 변경 이벤트
+    UPROPERTY(BlueprintAssignable, Category = "PJLink|Discovery|Events")
+    FPJLinkDeviceSelectionChangedDelegate OnDeviceSelectionChanged;
+
+    // 확장 컨트롤 패널 표시/숨김 토글
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery|UI")
+    void ToggleExtendedControlPanel();
+
+    // 확장 컨트롤 패널 가시성 업데이트
+    UFUNCTION(BlueprintNativeEvent, Category = "PJLink|Discovery|UI")
+    void UpdateExtendedControlPanelVisibility();
+
+    // 선택된 장치에 대한 일괄 작업 UI
+    UFUNCTION(BlueprintNativeEvent, Category = "PJLink|Discovery|BatchOperation")
+    void ShowBatchOperationUI(EPJLinkBatchOperation Operation);
+
+    // 일괄 작업 UI 함수들
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery|BatchOperation")
+    void ShowBatchConnectUI();
+
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery|BatchOperation")
+    void ShowBatchSaveAsPresetsUI();
+
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery|BatchOperation")
+    void ShowBatchAddToGroupUI();
+
+    // 장치 세부 정보 확장 패널
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery|UI")
+    void ExpandDeviceDetails(bool bExpand);
+
+    // 세부 정보 패널 크기 업데이트
+    UFUNCTION(BlueprintNativeEvent, Category = "PJLink|Discovery|UI")
+    void UpdateDetailPanelSize();
+
+    // 확장 UI 관련 속성
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PJLink|Discovery|UI")
+    bool bShowExtendedControlPanel = false;
+
+    UPROPERTY(BlueprintReadOnly, Category = "PJLink|Discovery|UI")
+    bool bExpandedDeviceDetails = false;
+
+    // 확장 컨트롤 토글 버튼
+    UPROPERTY(BlueprintReadWrite, meta = (BindWidget), Category = "PJLink|UI")
+    class UButton* ExtendedControlsToggleButton;
+
+    UPROPERTY(BlueprintReadWrite, meta = (BindWidget), Category = "PJLink|UI")
+    class UTextBlock* ExtendedControlsToggleText;
+
+    // 일괄 작업 버튼들
+    UPROPERTY(BlueprintReadWrite, meta = (BindWidget), Category = "PJLink|UI")
+    class UButton* BatchConnectButton;
+
+    UPROPERTY(BlueprintReadWrite, meta = (BindWidget), Category = "PJLink|UI")
+    class UButton* BatchSaveAsPresetsButton;
+
+    UPROPERTY(BlueprintReadWrite, meta = (BindWidget), Category = "PJLink|UI")
+    class UButton* BatchAddToGroupButton;
+
+    // 작업 시작 메시지 개선
+    UFUNCTION(BlueprintCallable, Category = "PJLink|Discovery|UI")
+    void ShowWorkingMessage(const FString& Operation, const FString& Details = TEXT(""));
+
+    // 작업 진행 중 표시 가시성 설정
+    UFUNCTION(BlueprintNativeEvent, Category = "PJLink|Discovery|UI")
+    void SetWorkingIndicatorVisible(bool bVisible);
+
+    // 메시지 함수 재정의
+    virtual void ShowSuccessMessage(const FString& Message) override;
+    virtual void ShowErrorMessage(const FString& ErrorMessage) override;
+
 protected:
     /**
      * 검색 완료 이벤트 처리
@@ -517,4 +648,13 @@ private:
     float PulseAnimationTime = 0.0f;
     bool bIsPulseAnimationActive = false;
     TArray<UWidget*> AnimatedWidgets;
+
+    // 다중 선택 인덱스 배열
+    UPROPERTY()
+    TArray<int32> SelectedDeviceIndices;
+
+    // 일괄 처리 내부 함수들
+    bool BatchConnectDevices(const TArray<FPJLinkDiscoveryResult>& Devices);
+    bool BatchSaveAsPresets(const TArray<FPJLinkDiscoveryResult>& Devices, const FString& BasePresetName);
+    bool BatchAddToGroup(const TArray<FPJLinkDiscoveryResult>& Devices, const FString& GroupName);
 };

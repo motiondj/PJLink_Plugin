@@ -61,3 +61,65 @@ void UPJLinkDiscoveryResultItemWidget::OnSelectButtonClicked()
         OnItemSelected.Execute(ItemIndex);
     }
 }
+
+// 선택 상태 설정
+void UPJLinkDiscoveryResultItemWidget::SetSelected(bool bInSelected)
+{
+    bIsSelected = bInSelected;
+
+    // 선택 상태에 따라 시각적 표시 변경
+    if (SelectionBorder)
+    {
+        if (bIsSelected)
+        {
+            SelectionBorder->SetBrushColor(SelectedColor);
+        }
+        else
+        {
+            SelectionBorder->SetBrushColor(NormalColor);
+        }
+    }
+}
+
+// 선택 상태 가져오기
+bool UPJLinkDiscoveryResultItemWidget::IsSelected() const
+{
+    return bIsSelected;
+}
+
+void UPJLinkDiscoveryResultItemWidget::NativeConstruct()
+{
+    Super::NativeConstruct();
+
+    // 선택 버튼 이벤트 바인딩
+    if (SelectButton)
+    {
+        SelectButton->OnClicked.AddDynamic(this, &UPJLinkDiscoveryResultItemWidget::OnSelectButtonClicked);
+    }
+
+    // 항목 자체 클릭 이벤트 설정 (선택적)
+    if (ItemBackground)
+    {
+        ItemBackground->OnMouseButtonDown.BindUFunction(this, FName("OnItemClicked"));
+    }
+
+    // 초기 선택 상태 설정
+    SetSelected(false);
+}
+
+// 항목 클릭 이벤트
+FReply UPJLinkDiscoveryResultItemWidget::OnItemClicked(FGeometry MyGeometry, const FPointerEvent& MouseEvent)
+{
+    // 왼쪽 버튼 클릭 시 항목 선택 처리
+    if (MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
+    {
+        if (OnItemSelected.IsBound())
+        {
+            OnItemSelected.Execute(ItemIndex);
+        }
+
+        return FReply::Handled();
+    }
+
+    return FReply::Unhandled();
+}

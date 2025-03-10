@@ -1382,3 +1382,383 @@ void UPJLinkDiscoveryWidget::UpdateProgressAnimation_Implementation(float Progre
         SetRotationAnimationSpeed(RotationAnimationSpeed * AnimationSpeedMultiplier);
     }
 }
+
+// PJLinkDiscoveryWidget.cpp 파일에 추가할 함수들
+
+// 선택된 장치 관리 함수
+void UPJLinkDiscoveryWidget::ManageSelectedDevice()
+{
+    // 현재 선택된 장치가 있는지 확인
+    TArray<FPJLinkDiscoveryResult> FilteredResults = GetFilteredAndSortedResults();
+    if (!FilteredResults.IsValidIndex(SelectedDeviceIndex))
+    {
+        ShowInfoMessage(TEXT("먼저 장치를 선택해주세요."));
+        return;
+    }
+
+    // 선택된 장치 정보
+    const FPJLinkDiscoveryResult& SelectedDevice = FilteredResults[SelectedDeviceIndex];
+
+    // 세부 정보 패널 업데이트
+    UpdateDetailPanel(SelectedDevice);
+
+    // 선택된 장치 강조 표시
+    HighlightSelectedDevice(SelectedDeviceIndex);
+}
+
+// 장치에 연결하는 함수 업데이트
+bool UPJLinkDiscoveryWidget::ConnectToSelectedDevice()
+{
+    // 현재 선택된 장치가 있는지 확인
+    TArray<FPJLinkDiscoveryResult> FilteredResults = GetFilteredAndSortedResults();
+    if (!FilteredResults.IsValidIndex(SelectedDeviceIndex))
+    {
+        ShowInfoMessage(TEXT("먼저 장치를 선택해주세요."));
+        return false;
+    }
+
+    // 선택된 장치 정보
+    const FPJLinkDiscoveryResult& SelectedDevice = FilteredResults[SelectedDeviceIndex];
+
+    // 연결 시작
+    ShowInfoMessage(FString::Printf(TEXT("%s (%s)에 연결 중..."),
+        *SelectedDevice.Name, *SelectedDevice.IPAddress));
+
+    // 실제 연결 시도
+    ConnectToDevice(SelectedDevice);
+
+    return true;
+}
+
+// 선택된 장치 강조 표시 함수
+void UPJLinkDiscoveryWidget::HighlightSelectedDevice_Implementation(int32 DeviceIndex)
+{
+    // 이 함수는 블루프린트에서 구현될 수 있습니다
+    // 기본 구현에서는 아무것도 안함
+}
+
+// 프리셋으로 저장
+bool UPJLinkDiscoveryWidget::SaveSelectedDeviceAsPreset(const FString& PresetName)
+{
+    // 현재 선택된 장치가 있는지 확인
+    TArray<FPJLinkDiscoveryResult> FilteredResults = GetFilteredAndSortedResults();
+    if (!FilteredResults.IsValidIndex(SelectedDeviceIndex))
+    {
+        ShowInfoMessage(TEXT("먼저 장치를 선택해주세요."));
+        return false;
+    }
+
+    // 선택된 장치 정보
+    const FPJLinkDiscoveryResult& SelectedDevice = FilteredResults[SelectedDeviceIndex];
+
+    // 프리셋 이름 검증
+    FString ActualPresetName = PresetName;
+    if (ActualPresetName.IsEmpty())
+    {
+        ActualPresetName = FString::Printf(TEXT("%s_%s"),
+            *SelectedDevice.Name.IsEmpty() ? TEXT("Projector") : *SelectedDevice.Name,
+            *SelectedDevice.IPAddress);
+    }
+
+    // 저장
+    SaveDeviceAsPreset(SelectedDevice, ActualPresetName);
+
+    ShowSuccessMessage(FString::Printf(TEXT("장치를 프리셋 '%s'으로 저장했습니다."), *ActualPresetName));
+
+    return true;
+}
+
+// 그룹에 추가
+bool UPJLinkDiscoveryWidget::AddSelectedDeviceToGroup(const FString& GroupName)
+{
+    // 현재 선택된 장치가 있는지 확인
+    TArray<FPJLinkDiscoveryResult> FilteredResults = GetFilteredAndSortedResults();
+    if (!FilteredResults.IsValidIndex(SelectedDeviceIndex))
+    {
+        ShowInfoMessage(TEXT("먼저 장치를 선택해주세요."));
+        return false;
+    }
+
+    // 선택된 장치 정보
+    const FPJLinkDiscoveryResult& SelectedDevice = FilteredResults[SelectedDeviceIndex];
+
+    // 그룹 이름 검증
+    FString ActualGroupName = GroupName;
+    if (ActualGroupName.IsEmpty())
+    {
+        ActualGroupName = TEXT("Default");
+    }
+
+    // 그룹에 추가
+    AddDeviceToGroup(SelectedDevice, ActualGroupName);
+
+    ShowSuccessMessage(FString::Printf(TEXT("장치를 그룹 '%s'에 추가했습니다."), *ActualGroupName));
+
+    return true;
+}
+
+// 선택된 장치 상세 정보 보기
+void UPJLinkDiscoveryWidget::ShowSelectedDeviceDetails()
+{
+    // 현재 선택된 장치가 있는지 확인
+    TArray<FPJLinkDiscoveryResult> FilteredResults = GetFilteredAndSortedResults();
+    if (!FilteredResults.IsValidIndex(SelectedDeviceIndex))
+    {
+        ShowInfoMessage(TEXT("먼저 장치를 선택해주세요."));
+        return;
+    }
+
+    // 선택된 장치 정보
+    const FPJLinkDiscoveryResult& SelectedDevice = FilteredResults[SelectedDeviceIndex];
+
+    // 세부 정보 업데이트 호출
+    UpdateDetailPanel(SelectedDevice);
+}
+
+// 여러 장치 일괄 선택 처리
+TArray<int32> UPJLinkDiscoveryWidget::GetSelectedDeviceIndices() const
+{
+    return SelectedDeviceIndices;
+}
+
+// 장치 선택 토글
+void UPJLinkDiscoveryWidget::ToggleDeviceSelection(int32 DeviceIndex)
+{
+    if (SelectedDeviceIndices.Contains(DeviceIndex))
+    {
+        SelectedDeviceIndices.Remove(DeviceIndex);
+    }
+    else
+    {
+        SelectedDeviceIndices.Add(DeviceIndex);
+    }
+
+    // 단일 선택 모드인 경우 현재 선택된 인덱스도 업데이트
+    if (bSingleSelectionMode)
+    {
+        SelectedDeviceIndex = SelectedDeviceIndices.Num() > 0 ? SelectedDeviceIndices.Last() : -1;
+    }
+
+    // 선택 변경 이벤트 발생
+    OnDeviceSelectionChanged.Broadcast(SelectedDeviceIndices);
+}
+
+// 모든 장치 선택
+void UPJLinkDiscoveryWidget::SelectAllDevices()
+{
+    SelectedDeviceIndices.Empty();
+
+    TArray<FPJLinkDiscoveryResult> FilteredResults = GetFilteredAndSortedResults();
+    for (int32 i = 0; i < FilteredResults.Num(); i++)
+    {
+        SelectedDeviceIndices.Add(i);
+    }
+
+    // 선택 변경 이벤트 발생
+    OnDeviceSelectionChanged.Broadcast(SelectedDeviceIndices);
+}
+
+// 선택 장치 추가 함수
+void UPJLinkDiscoveryWidget::AddToSelection(int32 DeviceIndex)
+{
+    if (!SelectedDeviceIndices.Contains(DeviceIndex))
+    {
+        SelectedDeviceIndices.Add(DeviceIndex);
+
+        // 단일 선택 모드인 경우 현재 선택된 인덱스도 업데이트
+        if (bSingleSelectionMode)
+        {
+            SelectedDeviceIndex = DeviceIndex;
+        }
+
+        // 선택 변경 이벤트 발생
+        OnDeviceSelectionChanged.Broadcast(SelectedDeviceIndices);
+    }
+}
+
+// 선택 해제
+void UPJLinkDiscoveryWidget::ClearSelection()
+{
+    SelectedDeviceIndices.Empty();
+    SelectedDeviceIndex = -1;
+
+    // 선택 변경 이벤트 발생
+    OnDeviceSelectionChanged.Broadcast(SelectedDeviceIndices);
+}
+
+// 선택된 장치들에 대한 일괄 작업
+bool UPJLinkDiscoveryWidget::ProcessSelectedDevices(EPJLinkBatchOperation Operation, const FString& Parameter)
+{
+    if (SelectedDeviceIndices.Num() == 0)
+    {
+        ShowInfoMessage(TEXT("먼저 장치를 선택해주세요."));
+        return false;
+    }
+
+    TArray<FPJLinkDiscoveryResult> FilteredResults = GetFilteredAndSortedResults();
+    TArray<FPJLinkDiscoveryResult> SelectedDevices;
+
+    // 선택된 인덱스들에 해당하는 장치들 수집
+    for (int32 Index : SelectedDeviceIndices)
+    {
+        if (FilteredResults.IsValidIndex(Index))
+        {
+            SelectedDevices.Add(FilteredResults[Index]);
+        }
+    }
+
+    if (SelectedDevices.Num() == 0)
+    {
+        ShowInfoMessage(TEXT("유효한 선택된 장치가 없습니다."));
+        return false;
+    }
+
+    // 작업 유형에 따른 처리
+    switch (Operation)
+    {
+    case EPJLinkBatchOperation::Connect:
+        return BatchConnectDevices(SelectedDevices);
+
+    case EPJLinkBatchOperation::SaveAsPresets:
+        return BatchSaveAsPresets(SelectedDevices, Parameter);
+
+    case EPJLinkBatchOperation::AddToGroup:
+        return BatchAddToGroup(SelectedDevices, Parameter);
+
+    default:
+        ShowErrorMessage(TEXT("지원되지 않는 일괄 작업입니다."));
+        return false;
+    }
+}
+
+// 일괄 연결
+bool UPJLinkDiscoveryWidget::BatchConnectDevices(const TArray<FPJLinkDiscoveryResult>& Devices)
+{
+    if (Devices.Num() == 0)
+    {
+        return false;
+    }
+
+    int32 SuccessCount = 0;
+
+    // 현재는 첫 번째 장치에만 연결 (다중 연결은 관리자 컴포넌트를 통해 구현 필요)
+    if (Devices.Num() > 0)
+    {
+        ConnectToDevice(Devices[0]);
+        SuccessCount++;
+
+        if (Devices.Num() > 1)
+        {
+            ShowInfoMessage(FString::Printf(TEXT("첫 번째 장치에 연결했습니다. 여러 장치 연결은 PJLinkManagerComponent를 사용하세요.")));
+        }
+        else
+        {
+            ShowInfoMessage(FString::Printf(TEXT("'%s' (%s)에 연결했습니다."),
+                *Devices[0].Name, *Devices[0].IPAddress));
+        }
+    }
+
+    return SuccessCount > 0;
+}
+
+// 일괄 프리셋 저장
+bool UPJLinkDiscoveryWidget::BatchSaveAsPresets(const TArray<FPJLinkDiscoveryResult>& Devices, const FString& BasePresetName)
+{
+    if (Devices.Num() == 0)
+    {
+        return false;
+    }
+
+    int32 SuccessCount = 0;
+
+    for (int32 i = 0; i < Devices.Num(); i++)
+    {
+        // 프리셋 이름 생성 (여러 개일 경우 번호 추가)
+        FString PresetName = BasePresetName;
+        if (PresetName.IsEmpty())
+        {
+            PresetName = Devices[i].Name.IsEmpty() ?
+                FString::Printf(TEXT("Projector_%s"), *Devices[i].IPAddress) :
+                Devices[i].Name;
+        }
+
+        if (Devices.Num() > 1)
+        {
+            PresetName = FString::Printf(TEXT("%s_%d"), *PresetName, i + 1);
+        }
+
+        // 저장
+        SaveDeviceAsPreset(Devices[i], PresetName);
+        SuccessCount++;
+    }
+
+    if (SuccessCount > 0)
+    {
+        ShowSuccessMessage(FString::Printf(TEXT("%d개 장치를 프리셋으로 저장했습니다."), SuccessCount));
+    }
+
+    return SuccessCount > 0;
+}
+
+// 일괄 그룹 추가
+bool UPJLinkDiscoveryWidget::BatchAddToGroup(const TArray<FPJLinkDiscoveryResult>& Devices, const FString& GroupName)
+{
+    if (Devices.Num() == 0)
+    {
+        return false;
+    }
+
+    FString ActualGroupName = GroupName.IsEmpty() ? TEXT("Default") : GroupName;
+    int32 SuccessCount = 0;
+
+    for (const FPJLinkDiscoveryResult& Device : Devices)
+    {
+        AddDeviceToGroup(Device, ActualGroupName);
+        SuccessCount++;
+    }
+
+    if (SuccessCount > 0)
+    {
+        ShowSuccessMessage(FString::Printf(TEXT("%d개 장치를 그룹 '%s'에 추가했습니다."),
+            SuccessCount, *ActualGroupName));
+    }
+
+    return SuccessCount > 0;
+}
+
+// 작업 시작 메시지 개선
+void UPJLinkDiscoveryWidget::ShowWorkingMessage(const FString& Operation, const FString& Details)
+{
+    FString Message = FString::Printf(TEXT("%s 중... %s"), *Operation, *Details);
+    ShowInfoMessage(Message);
+
+    // 작업 진행 중 표시 활성화
+    SetWorkingIndicatorVisible(true);
+}
+
+// 작업 성공 메시지 개선
+void UPJLinkDiscoveryWidget::ShowSuccessMessage(const FString& Message)
+{
+    // 작업 진행 중 표시 비활성화
+    SetWorkingIndicatorVisible(false);
+
+    // 원래 구현 호출
+    Super::ShowSuccessMessage(Message);
+}
+
+// 작업 실패 메시지 개선
+void UPJLinkDiscoveryWidget::ShowErrorMessage(const FString& ErrorMessage)
+{
+    // 작업 진행 중 표시 비활성화
+    SetWorkingIndicatorVisible(false);
+
+    // 원래 구현 호출
+    Super::ShowErrorMessage(ErrorMessage);
+}
+
+// 작업 진행 중 표시 가시성 설정
+void UPJLinkDiscoveryWidget::SetWorkingIndicatorVisible_Implementation(bool bVisible)
+{
+    // 블루프린트에서 구현할 수 있도록 함
+    // 기본 구현은 비어 있음
+}

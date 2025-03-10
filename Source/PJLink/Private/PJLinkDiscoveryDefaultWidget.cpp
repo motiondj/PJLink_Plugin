@@ -853,3 +853,248 @@ void UPJLinkDiscoveryDefaultWidget::FadeOutScanningAnimation();
 // PlayDeviceFoundAnimation 함수 - 블루프린트에서 구현할 기능을 위한 템플릿
 UFUNCTION(BlueprintImplementableEvent, Category = "PJLink|Discovery|Animation")
 void UPJLinkDiscoveryDefaultWidget::PlayDeviceFoundAnimation(UWidget* TargetWidget, const FLinearColor& EffectColor);
+
+// 결과 항목 선택 이벤트 처리
+void UPJLinkDiscoveryDefaultWidget::OnResultItemClicked(int32 ItemIndex)
+{
+    // 단일 선택 모드인 경우 기존 선택 해제
+    if (bSingleSelectionMode)
+    {
+        ClearSelection();
+    }
+
+    // 선택 상태 토글
+    ToggleDeviceSelection(ItemIndex);
+
+    // 선택된 장치가 있으면 세부 정보 표시
+    if (SelectedDeviceIndex >= 0)
+    {
+        ShowSelectedDeviceDetails();
+    }
+    else if (DetailPanel)
+    {
+        // 선택 해제된 경우 세부 정보 패널 숨기기
+        DetailPanel->SetVisibility(ESlateVisibility::Collapsed);
+    }
+}
+
+void UPJLinkDiscoveryDefaultWidget::OnManageButtonClicked()
+{
+    ManageSelectedDevice();
+}
+
+void UPJLinkDiscoveryDefaultWidget::OnConnectButtonClicked()
+{
+    ConnectToSelectedDevice();
+}
+
+void UPJLinkDiscoveryDefaultWidget::OnAddToGroupButtonClicked()
+{
+    // 그룹 선택 다이얼로그 표시 (블루프린트에서 구현)
+    ShowGroupSelectionDialog();
+}
+
+void UPJLinkDiscoveryDefaultWidget::OnSaveAsPresetButtonClicked()
+{
+    // 프리셋 이름 입력 다이얼로그 표시 (블루프린트에서 구현)
+    ShowPresetNameInputDialog();
+}
+
+// 블루프린트로 구현할 다이얼로그 함수
+void UPJLinkDiscoveryDefaultWidget::ShowGroupSelectionDialog_Implementation()
+{
+    // 기본 구현은 비어있음 - 블루프린트에서 구현
+}
+
+void UPJLinkDiscoveryDefaultWidget::ShowPresetNameInputDialog_Implementation()
+{
+    // 기본 구현은 비어있음 - 블루프린트에서 구현
+}
+
+// 선택 상태 변경 처리
+void UPJLinkDiscoveryDefaultWidget::OnSelectionChanged(const TArray<int32>& SelectedIndices)
+{
+    // 선택된 항목이 있으면 관리 버튼 활성화
+    if (ManageButton)
+    {
+        ManageButton->SetIsEnabled(SelectedIndices.Num() > 0);
+    }
+
+    if (ConnectButton)
+    {
+        ConnectButton->SetIsEnabled(SelectedIndices.Num() > 0);
+    }
+
+    if (AddToGroupButton)
+    {
+        AddToGroupButton->SetIsEnabled(SelectedIndices.Num() > 0);
+    }
+
+    if (SaveAsPresetButton)
+    {
+        SaveAsPresetButton->SetIsEnabled(SelectedIndices.Num() > 0);
+    }
+}
+
+// 검색 결과 확장 업데이트
+void UPJLinkDiscoveryDefaultWidget::UpdateResultsList_Implementation(const TArray<FPJLinkDiscoveryResult>& Results)
+{
+    // 상위 클래스 구현 호출
+    Super::UpdateResultsList_Implementation(Results);
+
+    // 선택 상태 초기화
+    ClearSelection();
+
+    // 결과 없음 메시지 처리
+    if (Results.Num() == 0)
+    {
+        if (DetailPanel)
+        {
+            DetailPanel->SetVisibility(ESlateVisibility::Collapsed);
+        }
+
+        if (NoResultsBox)
+        {
+            NoResultsBox->SetVisibility(ESlateVisibility::Visible);
+        }
+    }
+    else
+    {
+        if (NoResultsBox)
+        {
+            NoResultsBox->SetVisibility(ESlateVisibility::Collapsed);
+        }
+    }
+}
+
+// 선택된 장치 강조 표시 구현
+void UPJLinkDiscoveryDefaultWidget::HighlightSelectedDevice_Implementation(int32 DeviceIndex)
+{
+    // 결과 아이템 위젯들을 조회하여 선택 상태 시각적 표시
+    if (ResultsScrollBox)
+    {
+        for (int32 i = 0; i < ResultsScrollBox->GetChildrenCount(); i++)
+        {
+            UPJLinkDiscoveryResultItemWidget* ItemWidget =
+                Cast<UPJLinkDiscoveryResultItemWidget>(ResultsScrollBox->GetChildAt(i));
+
+            if (ItemWidget)
+            {
+                // 선택 상태 설정
+                ItemWidget->SetSelected(ItemWidget->ItemIndex == DeviceIndex);
+            }
+        }
+    }
+}
+
+void UPJLinkDiscoveryDefaultWidget::NativeConstruct()
+{
+    Super::NativeConstruct();
+
+    // 기존 버튼 이벤트 바인딩
+
+    // 확장 컨트롤 관련 이벤트 바인딩
+    if (ExtendedControlsToggleButton)
+    {
+        ExtendedControlsToggleButton->OnClicked.AddDynamic(this, &UPJLinkDiscoveryDefaultWidget::OnToggleExtendedControlsClicked);
+    }
+
+    if (BatchConnectButton)
+    {
+        BatchConnectButton->OnClicked.AddDynamic(this, &UPJLinkDiscoveryDefaultWidget::OnBatchConnectClicked);
+    }
+
+    if (BatchSaveAsPresetsButton)
+    {
+        BatchSaveAsPresetsButton->OnClicked.AddDynamic(this, &UPJLinkDiscoveryDefaultWidget::OnBatchSaveAsPresetsClicked);
+    }
+
+    if (BatchAddToGroupButton)
+    {
+        BatchAddToGroupButton->OnClicked.AddDynamic(this, &UPJLinkDiscoveryDefaultWidget::OnBatchAddToGroupClicked);
+    }
+
+    // 초기 확장 컨트롤 패널 상태 설정
+    UpdateExtendedControlPanelVisibility();
+
+    // 장치 선택 이벤트 연결
+    OnDeviceSelectionChanged.AddUniqueDynamic(this, &UPJLinkDiscoveryDefaultWidget::OnSelectionChanged);
+}
+
+// 확장 컨트롤 토글 버튼 클릭 이벤트
+void UPJLinkDiscoveryDefaultWidget::OnToggleExtendedControlsClicked()
+{
+    ToggleExtendedControlPanel();
+}
+
+// 일괄 연결 버튼 클릭 이벤트
+void UPJLinkDiscoveryDefaultWidget::OnBatchConnectClicked()
+{
+    ShowBatchConnectUI();
+}
+
+// 일괄 프리셋 저장 버튼 클릭 이벤트
+void UPJLinkDiscoveryDefaultWidget::OnBatchSaveAsPresetsClicked()
+{
+    ShowBatchSaveAsPresetsUI();
+}
+
+// 일괄 그룹 추가 버튼 클릭 이벤트
+void UPJLinkDiscoveryDefaultWidget::OnBatchAddToGroupClicked()
+{
+    ShowBatchAddToGroupUI();
+}
+
+// 확장 컨트롤 패널 가시성 업데이트 구현
+void UPJLinkDiscoveryDefaultWidget::UpdateExtendedControlPanelVisibility_Implementation()
+{
+    if (ExtendedControlPanel)
+    {
+        ExtendedControlPanel->SetVisibility(
+            bShowExtendedControlPanel ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+    }
+
+    // 확장 컨트롤 토글 버튼 텍스트 업데이트
+    if (ExtendedControlsToggleText)
+    {
+        ExtendedControlsToggleText->SetText(FText::FromString(
+            bShowExtendedControlPanel ? TEXT("간단히 보기") : TEXT("확장 제어판")));
+    }
+}
+
+// 세부 정보 패널 크기 업데이트 구현
+void UPJLinkDiscoveryDefaultWidget::UpdateDetailPanelSize_Implementation()
+{
+    if (DetailPanel)
+    {
+        // 확장된 상태에 따라 패널 크기 변경
+        if (bExpandedDeviceDetails)
+        {
+            // 확장된 크기로 변경 (UE4 위젯 크기 조정 방식에 따라 구현)
+            UOverlaySlot* OverlaySlot = Cast<UOverlaySlot>(DetailPanel->Slot);
+            if (OverlaySlot)
+            {
+                OverlaySlot->SetSize(FVector2D(1.0f, 0.4f)); // 높이를 40%로 확장
+            }
+        }
+        else
+        {
+            // 기본 크기로 변경
+            UOverlaySlot* OverlaySlot = Cast<UOverlaySlot>(DetailPanel->Slot);
+            if (OverlaySlot)
+            {
+                OverlaySlot->SetSize(FVector2D(1.0f, 0.25f)); // 높이를 25%로 설정
+            }
+        }
+    }
+}
+
+// 작업 진행 중 표시 가시성 설정 구현
+void UPJLinkDiscoveryDefaultWidget::SetWorkingIndicatorVisible_Implementation(bool bVisible)
+{
+    if (WorkingIndicator)
+    {
+        WorkingIndicator->SetVisibility(
+            bVisible ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+    }
+}

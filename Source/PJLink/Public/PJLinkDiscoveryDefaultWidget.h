@@ -99,6 +99,27 @@ public:
     UPROPERTY(BlueprintReadWrite, Category = "PJLink|UI|Animation")
     float AnimationSpeedMultiplier = 1.0f;
 
+    // 관리 버튼들
+    UPROPERTY(BlueprintReadWrite, meta = (BindWidget), Category = "PJLink|UI")
+    class UButton* ManageButton;
+
+    UPROPERTY(BlueprintReadWrite, meta = (BindWidget), Category = "PJLink|UI")
+    class UButton* ConnectButton;
+
+    UPROPERTY(BlueprintReadWrite, meta = (BindWidget), Category = "PJLink|UI")
+    class UButton* AddToGroupButton;
+
+    UPROPERTY(BlueprintReadWrite, meta = (BindWidget), Category = "PJLink|UI")
+    class UButton* SaveAsPresetButton;
+
+    // 확장 컨트롤 패널
+    UPROPERTY(BlueprintReadWrite, meta = (BindWidget), Category = "PJLink|UI")
+    class UWidget* ExtendedControlPanel;
+
+    // 작업 진행 중 표시 UI
+    UPROPERTY(BlueprintReadWrite, meta = (BindWidget), Category = "PJLink|UI")
+    class UWidget* WorkingIndicator;
+
 protected:
     // 부모 클래스의 블루프린트 이벤트 구현
     virtual void UpdateProgressBar_Implementation(float ProgressPercentage, int32 DiscoveredDevices, int32 ScannedAddresses) override;
@@ -142,4 +163,60 @@ protected:
     void InitializeFilterOptions();
     void UpdateButtonStates();
     void ClearResultsPanel();
+
+    // 결과 항목 선택 이벤트 처리
+    UFUNCTION()
+    void OnResultItemClicked(int32 ItemIndex);
+
+    // 버튼 이벤트 핸들러
+    UFUNCTION()
+    void OnManageButtonClicked();
+
+    UFUNCTION()
+    void OnConnectButtonClicked();
+
+    UFUNCTION()
+    void OnAddToGroupButtonClicked();
+
+    UFUNCTION()
+    void OnSaveAsPresetButtonClicked();
+
+    // 다이얼로그 함수들
+    UFUNCTION(BlueprintNativeEvent, Category = "PJLink|Discovery|UI")
+    void ShowGroupSelectionDialog();
+
+    UFUNCTION(BlueprintNativeEvent, Category = "PJLink|Discovery|UI")
+    void ShowPresetNameInputDialog();
+
+    // 선택 상태 변경 처리
+    UFUNCTION()
+    void OnSelectionChanged(const TArray<int32>& SelectedIndices);
+
+    // 선택된 장치 강조 표시 재정의
+    virtual void HighlightSelectedDevice_Implementation(int32 DeviceIndex) override;
+
+    // 검색 결과 업데이트 재정의
+    virtual void UpdateResultsList_Implementation(const TArray<FPJLinkDiscoveryResult>& Results) override;
+
+    // 확장 컨트롤 관련 이벤트 핸들러
+    UFUNCTION()
+    void OnToggleExtendedControlsClicked();
+
+    UFUNCTION()
+    void OnBatchConnectClicked();
+
+    UFUNCTION()
+    void OnBatchSaveAsPresetsClicked();
+
+    UFUNCTION()
+    void OnBatchAddToGroupClicked();
+
+    // 확장 컨트롤 패널 가시성 업데이트 재정의
+    virtual void UpdateExtendedControlPanelVisibility_Implementation() override;
+
+    // 세부 정보 패널 크기 업데이트 재정의
+    virtual void UpdateDetailPanelSize_Implementation() override;
+
+    // 작업 진행 중 표시 가시성 설정 재정의
+    virtual void SetWorkingIndicatorVisible_Implementation(bool bVisible) override;
 };

@@ -192,13 +192,6 @@ public:
     UFUNCTION(BlueprintPure, Category = "PJLink")
     bool IsComponentValid() const;
 
-    // UPJLinkComponent.cpp - 함수 구현
-    bool UPJLinkComponent::IsComponentValid() const
-    {
-        // 핵심 객체들이 유효한지 확인
-        return IsValid(this) && NetworkManager && StateMachine;
-    }
-
     // 확장된 오류 이벤트
     UPROPERTY(BlueprintAssignable, Category = "PJLink|Events")
     FPJLinkExtendedErrorDelegate OnExtendedError;

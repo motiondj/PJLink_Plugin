@@ -31,7 +31,7 @@ UPJLinkComponent::UPJLinkComponent()
     StateMachine = nullptr;
 }
 
-vvoid UPJLinkComponent::BeginPlay()
+void UPJLinkComponent::BeginPlay()
 {
     Super::BeginPlay();
 
@@ -1090,4 +1090,10 @@ void UPJLinkDiscoveryWidget::UpdateDetailPanelSize_Implementation()
 {
     // 블루프린트에서 구현할 수 있도록 함
     // 기본 구현은 비어 있음
+}
+
+bool UPJLinkComponent::IsComponentValid() const
+{
+    // 핵심 객체들이 유효한지 확인
+    return IsValid(this) && NetworkManager && StateMachine;
 }

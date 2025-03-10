@@ -1734,3 +1734,16 @@ bool UPJLinkManagerComponent::DeserializeGroupPreset(const TSharedPtr<FJsonObjec
 
     return true;
 }
+
+bool UPJLinkManagerComponent::IsProjectorInGroup(UPJLinkComponent* ProjectorComponent, const FString& GroupName) const
+{
+    if (!ProjectorComponent || !GroupMap.Contains(GroupName))
+    {
+        return false;
+    }
+
+    FPJLinkProjectorInfo ProjectorInfo = ProjectorComponent->GetProjectorInfo();
+    FString ProjectorID = GenerateProjectorID(ProjectorInfo);
+
+    return GroupMap[GroupName].ContainsProjectorID(ProjectorID);
+}

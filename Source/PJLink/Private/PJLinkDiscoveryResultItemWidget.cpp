@@ -8,17 +8,6 @@ UPJLinkDiscoveryResultItemWidget::UPJLinkDiscoveryResultItemWidget(const FObject
 {
 }
 
-void UPJLinkDiscoveryResultItemWidget::NativeConstruct()
-{
-    Super::NativeConstruct();
-
-    // 선택 버튼 이벤트 바인딩
-    if (SelectButton)
-    {
-        SelectButton->OnClicked.AddDynamic(this, &UPJLinkDiscoveryResultItemWidget::OnSelectButtonClicked);
-    }
-}
-
 void UPJLinkDiscoveryResultItemWidget::SetResultData_Implementation(const FPJLinkDiscoveryResult& Result, int32 Index)
 {
     ResultData = Result;

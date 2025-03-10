@@ -326,27 +326,6 @@ void UPJLinkDiscoveryDefaultWidget::StopProgressAnimation_Implementation()
     // 이 부분은 블루프린트에서 구현하거나 여기서 직접 구현할 수 있음
 }
 
-void UPJLinkDiscoveryDefaultWidget::UpdateProgressAnimation_Implementation(float ProgressPercentage)
-{
-    // 진행 상황에 따른 애니메이션 속도 조정
-    if (ScanningAnimationImage)
-    {
-        // 애니메이션 속도를 진행률 및 발견된 장치 수에 따라 조정
-        float SpeedMultiplier = FMath::Min(3.0f, 1.0f + (ProgressPercentage / 100.0f));
-        AnimationSpeedMultiplier = SpeedMultiplier;
-
-        // 진행률에 따른 색상 그라데이션 계산 (0% = 파란색, 100% = 녹색)
-        FLinearColor AnimColor = FLinearColor::LerpUsingHSV(
-            FLinearColor(0.2f, 0.5f, 1.0f, 1.0f), // 시작 색상 (파란색)
-            FLinearColor(0.2f, 0.8f, 0.4f, 1.0f), // 종료 색상 (녹색)
-            ProgressPercentage / 100.0f           // 진행률 비율
-        );
-
-        // 이미지 색상 적용 (이미지가 ColorAndOpacity 속성을 지원하는 경우)
-        ScanningAnimationImage->SetColorAndOpacity(AnimColor);
-    }
-}
-
 // 장치 발견 효과 함수 추가
 void UPJLinkDiscoveryDefaultWidget::ShowDeviceFoundEffect_Implementation(int32 DeviceIndex, const FLinearColor& EffectColor)
 {

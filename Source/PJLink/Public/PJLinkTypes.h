@@ -476,19 +476,6 @@ struct PJLINK_API FPJLinkProjectorGroup
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FPJLinkGroupChangedDelegate, const FString&, GroupName);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FPJLinkProjectorGroupAssignmentChangedDelegate, const FString&, ProjectorID, const FString&, GroupName);
 
-bool UPJLinkManagerComponent::IsProjectorInGroup(UPJLinkComponent* ProjectorComponent, const FString& GroupName) const
-{
-    if (!ProjectorComponent || !GroupMap.Contains(GroupName))
-    {
-        return false;
-    }
-
-    FPJLinkProjectorInfo ProjectorInfo = ProjectorComponent->GetProjectorInfo();
-    FString ProjectorID = GenerateProjectorID(ProjectorInfo);
-
-    return GroupMap[GroupName].ContainsProjectorID(ProjectorID);
-}
-
 /**
  * 프로젝터 상태 기록을 저장하는 구조체
  */
